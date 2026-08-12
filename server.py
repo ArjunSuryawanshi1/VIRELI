@@ -168,6 +168,18 @@ class VireliRequestHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(encoded)
 
+    def do_GET(self):
+        if self.path.split("?", 1)[0] == "/api/config":
+            self.send_json(
+                HTTPStatus.OK,
+                {
+                    "googleClientId": os.environ.get("VIRELI_GOOGLE_CLIENT_ID", "").strip(),
+                },
+            )
+            return
+
+        super().do_GET()
+
     def do_POST(self):
         if self.path != "/api/ask-vireli":
             self.send_error(HTTPStatus.NOT_FOUND, "Not found")
