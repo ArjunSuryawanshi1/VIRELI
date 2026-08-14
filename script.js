@@ -4,7 +4,7 @@ const html = htm.bind(React.createElement);
 
 const NAV_ITEMS = [
   { id: "home", label: "Home" },
-  { id: "daily", label: "Plans" },
+  { id: "daily", label: "Assignments" },
   { id: "calendar", label: "Calendar" },
   { id: "daily-log", label: "Daily Log" },
   { id: "ask", label: "Ask VIRELI" },
@@ -46,6 +46,7 @@ const RESPONSE_TYPE_OPTIONS = [
 
 const EMPTY_HOMEWORK_DRAFT = {
   classId: "",
+  classLabel: "",
   title: "",
   topic: "",
   details: "",
@@ -484,20 +485,6 @@ function loadProfile() {
     googleSub: profile.googleSub || "",
     password: "",
   };
-}
-
-function decodeJwtPayload(token) {
-  try {
-    const [, payload = ""] = String(token || "").split(".");
-    const normalizedPayload = payload.replace(/-/g, "+").replace(/_/g, "/");
-    const paddedPayload = normalizedPayload.padEnd(
-      normalizedPayload.length + ((4 - (normalizedPayload.length % 4)) % 4),
-      "=",
-    );
-    return JSON.parse(window.atob(paddedPayload));
-  } catch (error) {
-    return null;
-  }
 }
 
 function normalizeRoutineEntry(entry = {}) {
@@ -1114,7 +1101,7 @@ function getTodayScheduleBlocks({
         source: "calendar",
         title: task.title,
         startMinutes: adjustedStart,
-        endMinutes: adjustedStart + 45,
+        endMinutes: adjustedStart + (Number(task.estimatedMinutes) || 45),
       };
     })
     .filter(Boolean);
@@ -1133,7 +1120,7 @@ function getTodayScheduleBlocks({
         source: "plan",
         title: item.title,
         startMinutes,
-        endMinutes: Math.min(bedMinutes, startMinutes + 45),
+        endMinutes: Math.min(bedMinutes, startMinutes + getAssignmentDuration(item)),
       };
     });
   const busyBlocks = [...routineBlocks, ...taskBlocks, ...planBlocks]
@@ -1223,6 +1210,187 @@ function getChartSegments(schedule) {
     title: block.title,
     width: Math.max(3, ((block.endMinutes - block.startMinutes) / totalMinutes) * 100),
   }));
+}
+
+function getFreeTimeWindows(schedule) {
+  return schedule.timelineBlocks
+    .filter((block) => block.source === "free" && block.endMinutes - block.startMinutes >= 15)
+    .map((block) => ({
+      ...block,
+      label: `${formatTimeLabel(minutesToTimeValue(block.startMinutes))}-${formatTimeLabel(minutesToTimeValue(block.endMinutes))}`,
+      durationLabel: formatDurationFromMinutes(block.endMinutes - block.startMinutes),
+    }));
+}
+
+function getAssignmentSubject(item, classes = []) {
+  return item.classLabel || (item.classId ? getClassLabel(classes, item.classId, "") : "") || "Assignment";
+}
+
+function getAssignmentDuration(item) {
+  const minutes = Number(item.estimatedMinutes);
+  return Number.isFinite(minutes) && minutes > 0 ? minutes : 45;
+}
+
+function estimateAssignmentMinutes(title = "", details = "") {
+  const source = `${title} ${details}`.toLowerCase();
+
+  if (/\b(project|presentation|research)\b/.test(source)) {
+    return 120;
+  }
+
+  if (/\b(essay|draft|write|writing|paper)\b/.test(source)) {
+    return 90;
+  }
+
+  if (/\b(read|chapter|chapters|novel|book)\b/.test(source)) {
+    return 60;
+  }
+
+  if (/\b(study|test|quiz|review)\b/.test(source)) {
+    return 50;
+  }
+
+  if (/\b(worksheet|problem|practice|homework)\b/.test(source)) {
+    return 40;
+  }
+
+  return 45;
+}
+
+function getMoodAdjustedDuration(item, mood = "") {
+  const base = getAssignmentDuration(item);
+
+  if (mood === "bad") {
+    return Math.min(base, 35);
+  }
+
+  return base;
+}
+
+function findBestFreeWindow(schedule, durationMinutes = 45) {
+  const freeWindows = getFreeTimeWindows(schedule);
+  return freeWindows.find((windowBlock) => windowBlock.endMinutes - windowBlock.startMinutes >= durationMinutes)
+    || freeWindows[0]
+    || null;
+}
+
+function getNextAssignmentRecommendation({
+  homeworkItems = [],
+  routine = EMPTY_ROUTINE_DRAFT,
+  calendarTasks = [],
+  mood = "",
+  now = new Date(),
+}) {
+  const today = getDateInputValue(now);
+  const schedule = getTodayScheduleBlocks({ routine, homeworkItems, calendarTasks, dateValue: today });
+  const remainingSchedule = getRemainingSchedule(schedule, now);
+  const activeItems = homeworkItems
+    .filter((item) => !item.completed)
+    .sort((a, b) => {
+      const aDate = getItemCalendarDate(a) || "9999-12-31";
+      const bDate = getItemCalendarDate(b) || "9999-12-31";
+      return `${aDate} ${a.scheduledTime || ""}`.localeCompare(`${bDate} ${b.scheduledTime || ""}`);
+    });
+  const scheduledNow = activeItems.find((item) => {
+    if ((item.scheduledDate || item.dueDate) !== today || !item.scheduledTime) {
+      return false;
+    }
+
+    const start = timeToMinutes(item.scheduledTime);
+    if (start === null) {
+      return false;
+    }
+
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    return currentMinutes >= start && currentMinutes <= start + getAssignmentDuration(item);
+  });
+  const nextItem = scheduledNow || activeItems[0] || null;
+
+  if (!nextItem) {
+    return {
+      item: null,
+      schedule,
+      remainingSchedule,
+      freeWindows: getFreeTimeWindows(remainingSchedule),
+      startTime: "",
+      duration: 0,
+    };
+  }
+
+  const duration = getMoodAdjustedDuration(nextItem, mood);
+  const bestWindow = findBestFreeWindow(remainingSchedule, duration);
+  const startTime = nextItem.scheduledTime || (bestWindow ? minutesToTimeValue(bestWindow.startMinutes) : "");
+
+  return {
+    item: nextItem,
+    schedule,
+    remainingSchedule,
+    freeWindows: getFreeTimeWindows(remainingSchedule),
+    startTime,
+    duration,
+  };
+}
+
+function getTodayProgress(homeworkItems = []) {
+  const today = getDateInputValue();
+  const todayItems = homeworkItems.filter((item) => (item.scheduledDate || item.dueDate) === today);
+  const completed = todayItems.filter((item) => item.completed).length;
+
+  return {
+    total: todayItems.length,
+    completed,
+    remaining: Math.max(0, todayItems.length - completed),
+    percent: todayItems.length ? Math.round((completed / todayItems.length) * 100) : 0,
+  };
+}
+
+function getUpcomingDeadlines(homeworkItems = []) {
+  const today = getDateInputValue();
+  return homeworkItems
+    .filter((item) => !item.completed && item.dueDate && item.dueDate >= today)
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+    .slice(0, 4);
+}
+
+function getWorkloadWarnings(homeworkItems = [], routine = EMPTY_ROUTINE_DRAFT, calendarTasks = []) {
+  const warnings = [];
+  const today = getDateInputValue();
+
+  for (let offset = 0; offset <= 7; offset += 1) {
+    const dateValue = addDaysToDateValue(today, offset);
+    const schedule = getTodayScheduleBlocks({ routine, homeworkItems, calendarTasks, dateValue });
+    const freeMinutes = getFreeTimeWindows(schedule).reduce(
+      (total, block) => total + block.endMinutes - block.startMinutes,
+      0,
+    );
+    const workload = homeworkItems
+      .filter((item) => !item.completed && (item.scheduledDate || item.dueDate) === dateValue)
+      .reduce((total, item) => total + getAssignmentDuration(item), 0);
+
+    if (workload > freeMinutes + 30) {
+      warnings.push({
+        dateValue,
+        message: `${formatShortDate(dateValue)} is overloaded by about ${formatDurationFromMinutes(workload - freeMinutes)}.`,
+      });
+    }
+  }
+
+  return warnings.slice(0, 2);
+}
+
+function getMissedAssignments(homeworkItems = [], now = new Date()) {
+  const today = getDateInputValue(now);
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  return homeworkItems
+    .filter((item) => {
+      if (item.completed || item.notificationDismissedDate === today || item.scheduledDate !== today || !item.scheduledTime) {
+        return false;
+      }
+
+      const start = timeToMinutes(item.scheduledTime);
+      return start !== null && start + getAssignmentDuration(item) < currentMinutes;
+    })
+    .slice(0, 3);
 }
 
 function getItemCalendarDate(item) {
@@ -2814,7 +2982,7 @@ function BrandLockup({ compact = false }) {
       <${VireliLogoMark} className="brand-mark" />
       <div className="brand-meta">
         <span className="brand-name">VIRELI</span>
-        <span className="brand-subtitle">Student wellness studio</span>
+        <span className="brand-subtitle">AI student planner</span>
       </div>
     </div>
   `;
@@ -3020,7 +3188,7 @@ function IntroScreen() {
             ease: [0.16, 1, 0.3, 1],
           }}
         >
-          <span className="intro-overline">student wellness and productivity</span>
+          <span className="intro-overline">your AI student planner</span>
           <h1 className="intro-word font-display">VIRELI</h1>
         </${motion.div}>
         <${motion.p}
@@ -3090,8 +3258,9 @@ function MoodCheckInScreen({
           transition=${{ duration: 0.7, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
         >
           <div className="mood-heading mood-heading-centered">
-            <p className="eyebrow">Mood pulse</p>
+            <p className="eyebrow">Setup 2 of 3 · Mood pulse</p>
             <h2 className="font-display">How are you doing today?</h2>
+            <p>Optional, quick, and only used to make today’s plan feel realistic.</p>
           </div>
 
           <div className="mood-grid mood-grid-centered">
@@ -3120,16 +3289,9 @@ function MoodCheckInScreen({
 
 function AccountScreen({
   profile,
-  profileDraft,
-  recoveryOpen,
   googleClientId,
   googleAuthStatus,
   googleAuthError,
-  onProfileDraftChange,
-  onAccountSubmit,
-  onForgotPassword,
-  onRecoverySelect,
-  onGoogleFallbackClick,
   onContinueAsGuest,
 }) {
   const googleButtonRef = useRef(null);
@@ -3144,26 +3306,20 @@ function AccountScreen({
       theme: "outline",
       size: "large",
       shape: "pill",
-      text: "continue_with",
+      text: "signin_with",
       width: Math.min(460, googleButtonRef.current.clientWidth || 460),
     });
   }, [googleClientId, googleAuthStatus]);
 
   return html`
     <${motion.section}
-      className="mood-screen min-h-screen relative flex items-center justify-center overflow-hidden px-5 py-8 sm:px-8"
+      className="account-screen min-h-screen relative flex items-center justify-center overflow-hidden px-5 py-8 sm:px-8"
       initial=${{ opacity: 0 }}
       animate=${{ opacity: 1 }}
       exit=${{ opacity: 0, scale: 0.985 }}
       transition=${{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
     >
-      <${GraphBackdrop} />
-
-      <div className="relative z-10 mx-auto flex w-full max-w-5xl flex-col gap-6">
-        <div className="mood-brand-row">
-          <${BrandLockup} compact=${true} />
-        </div>
-
+      <div className="relative z-10 mx-auto flex w-full max-w-lg flex-col items-center">
         <${motion.div}
           className="mood-panel profile-panel google-auth-panel"
           initial=${{ opacity: 0, y: 28 }}
@@ -3174,12 +3330,9 @@ function AccountScreen({
             <div className="google-auth-mark" aria-hidden="true">
               <span>V</span>
             </div>
-            <p className="eyebrow">Account</p>
+            <p className="google-auth-brand font-display">VIRELI</p>
             <h2 className="font-display">Sign in to VIRELI</h2>
-            <p>
-              Save your classes, homework, chats, and logs on
-              this device. Use Google when it is configured, or continue locally.
-            </p>
+            <p>Continue to your student planner</p>
           </div>
 
           <div className="google-auth-provider-shell">
@@ -3191,108 +3344,39 @@ function AccountScreen({
                     aria-label="Continue with Google"
                   ></div>
                   <p className="google-auth-status">
-                    ${googleAuthStatus === "ready"
+                    ${googleAuthStatus === "verifying"
+                      ? "Checking your Google sign-in..."
+                      : googleAuthStatus === "ready"
                       ? "Choose an existing Google account to continue."
                       : "Preparing Google sign-in..."}
                   </p>
                 `
               : html`
-                  <button
-                    type="button"
-                    className="google-auth-provider-button"
-                    onClick=${onGoogleFallbackClick}
-                  >
-                    <span className="google-auth-provider-mark">G</span>
-                    Continue with Google
-                  </button>
-                  <p className="google-auth-status">
+                  <div className="google-auth-config-notice">
                     Google sign-in needs a Google web client ID on the local server.
-                  </p>
+                  </div>
                 `}
             ${googleAuthError
               ? html`<p className="google-auth-error">${googleAuthError}</p>`
               : null}
           </div>
 
-          <form className="profile-form" onSubmit=${(event) => onAccountSubmit(event, "signin")}>
-            <label className="field-stack">
-              <span>Email</span>
-              <input
-                className="planning-input"
-                value=${profileDraft.email}
-                onInput=${(event) => onProfileDraftChange("email", event.target.value)}
-                placeholder="you@gmail.com"
-                type="email"
-                autoComplete="email"
-              />
-            </label>
-            <label className="field-stack">
-              <span>Password</span>
-              <input
-                className="planning-input"
-                value=${profileDraft.password}
-                onInput=${(event) => onProfileDraftChange("password", event.target.value)}
-                placeholder="Password"
-                type="password"
-                autoComplete="current-password"
-              />
-            </label>
-          </form>
+          <div className="google-auth-divider">
+            <span></span>
+            <small>or</small>
+            <span></span>
+          </div>
 
-          <div className="mood-control-row">
-            <button type="button" className="secondary-button auth-secondary-button" onClick=${onForgotPassword}>
-              Forgot password?
-            </button>
+          <div className="mood-control-row google-auth-actions">
             <button type="button" className="secondary-button auth-secondary-button" onClick=${onContinueAsGuest}>
               Continue as guest
             </button>
-            <button
-              type="button"
-              className="secondary-button"
-              onClick=${(event) => onAccountSubmit(event, "signup")}
-              disabled=${!profileDraft.email.trim() || !profileDraft.password.trim()}
-            >
-              Sign up
-            </button>
-            <button
-              type="button"
-              className="primary-button"
-              onClick=${(event) => onAccountSubmit(event, "signin")}
-              disabled=${!profileDraft.email.trim() || !profileDraft.password.trim()}
-            >
-              Sign in
-            </button>
           </div>
-
-          ${recoveryOpen
-            ? html`
-                <div className="recovery-panel">
-                  <p className="field-label">Recovery options</p>
-                  <div className="recovery-option-grid">
-                    ${RECOVERY_OPTIONS.map(
-                      (option) => html`
-                        <button
-                          key=${option.id}
-                          type="button"
-                          className="recovery-option"
-                          onClick=${() => onRecoverySelect(option)}
-                        >
-                          <strong>${option.title}</strong>
-                          <span>${option.copy}</span>
-                        </button>
-                      `,
-                    )}
-                  </div>
-                </div>
-              `
-            : null}
 
           <p className="privacy-note">
             ${profile.connected
-              ? profile.authMode === "google-gis"
-                ? "Signed in with Google. VIRELI stores only basic profile info on this device."
-                : "Signed in locally. This demo keeps profile data on this device."
-              : "Google sign-in uses Google Identity Services when configured. Local sign-in stays on this device."}
+              ? "Signed in with Google. VIRELI stores only basic profile info."
+              : "Google sign-in uses Google Identity Services. VIRELI never asks for your Google password."}
           </p>
         </${motion.div}>
       </div>
@@ -3335,10 +3419,10 @@ function RoutineSetupScreen({
           transition=${{ duration: 0.7, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
         >
           <div className="mood-heading">
-            <p className="eyebrow">Routine setup</p>
+            <p className="eyebrow">Setup 3 of 3 · Schedule basics</p>
             <h2 className="font-display">What does your normal day look like?</h2>
             <p>
-              VIRELI uses this to find realistic openings for tasks, not to judge your schedule.
+              Add wake time, sleep time, school, and recurring commitments so VIRELI can find real openings.
             </p>
           </div>
 
@@ -3761,12 +3845,28 @@ function HomeTab({
   routine,
   homeworkItems,
   calendarTasks,
+  savedClasses,
+  moodSelection,
+  onTabChange,
+  onHomeworkCompleteToggle,
+  onHomeworkReschedule,
+  onHomeworkDelete,
 }) {
-  const schedule = getTodayScheduleBlocks({ routine, homeworkItems, calendarTasks });
-  const remainingSchedule = getRemainingSchedule(schedule);
-  const freeLabel = formatDurationFromMinutes(remainingSchedule.freeMinutes);
+  const recommendation = getNextAssignmentRecommendation({
+    routine,
+    homeworkItems,
+    calendarTasks,
+    mood: moodSelection,
+  });
+  const schedule = recommendation.schedule;
+  const progress = getTodayProgress(homeworkItems);
+  const freeWindows = recommendation.freeWindows.slice(0, 4);
+  const deadlines = getUpcomingDeadlines(homeworkItems);
+  const warnings = getWorkloadWarnings(homeworkItems, routine, calendarTasks);
+  const missedItems = getMissedAssignments(homeworkItems);
   const chartSegments = getChartSegments(schedule);
-  const freeQuestion = getFreeTimeQuestion(remainingSchedule.freeMinutes);
+  const nextItem = recommendation.item;
+  const nextWindow = recommendation.freeWindows[0];
 
   return html`
     <${motion.section}
@@ -3780,22 +3880,120 @@ function HomeTab({
       <div className="tab-heading home-heading">
         <div>
           <p className="eyebrow">Home</p>
-          <h1 className="font-display">Today</h1>
+          <h1 className="font-display">What should I do right now?</h1>
           <p className="tab-heading-lead">
-            Your routine, open time, and schedule blocks in one place.
+            VIRELI looks at assignments, routines, and open time to choose the next useful step.
           </p>
         </div>
-        <span className="date-chip free-hours-chip">${freeLabel} free left today</span>
+        <span className="date-chip free-hours-chip">${freeWindows[0] ? `${freeWindows[0].label} open` : "No open window right now"}</span>
       </div>
 
-      <div className="home-grid">
+      <div className="home-grid planner-dashboard-grid">
+        <article className="feature-card next-task-card">
+          <p className="eyebrow">Next task</p>
+          ${nextItem
+            ? html`
+                <div className="next-task-main">
+                  <div>
+                    <h2 className="font-display">${nextItem.title}</h2>
+                    <p>${getAssignmentSubject(nextItem, savedClasses)}</p>
+                  </div>
+                  <span className="date-chip">${formatDurationFromMinutes(recommendation.duration)}</span>
+                </div>
+                <div className="next-task-meta">
+                  <span>Start: ${recommendation.startTime ? formatTimeLabel(recommendation.startTime) : "when you are ready"}</span>
+                  <span>${nextItem.dueDate ? `Due ${formatShortDate(nextItem.dueDate)}` : "No due date"}</span>
+                  <span>${nextWindow ? `Best window: ${nextWindow.label}` : "No free window found"}</span>
+                </div>
+                <div className="card-footer-row next-task-actions">
+                  <button type="button" className="primary-button" onClick=${() => onTabChange("daily")}>Start</button>
+                  <button type="button" className="secondary-button" onClick=${() => onHomeworkCompleteToggle(nextItem.id)}>Complete</button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick=${() => nextWindow && onHomeworkReschedule(nextItem.id, getDateInputValue(), minutesToTimeValue(nextWindow.startMinutes))}
+                    disabled=${!nextWindow}
+                  >
+                    Reschedule
+                  </button>
+                </div>
+              `
+            : html`
+                <div className="empty-action-state">
+                  <h2 className="font-display">No assignments yet.</h2>
+                  <p>Add one assignment and VIRELI will find a realistic time to work on it.</p>
+                  <button type="button" className="primary-button" onClick=${() => onTabChange("daily")}>Add assignment</button>
+                </div>
+              `}
+        </article>
+
+        <article className="feature-card progress-card">
+          <p className="eyebrow">Today’s progress</p>
+          <h3 className="font-display">${progress.completed}/${progress.total || 0} done</h3>
+          <div className="progress-track"><span style=${{ width: `${progress.percent}%` }}></span></div>
+          <p>${progress.remaining ? `${progress.remaining} item${progress.remaining === 1 ? "" : "s"} remaining today.` : "Nothing else scheduled for today."}</p>
+        </article>
+
+        <article className="feature-card deadline-card">
+          <p className="eyebrow">Upcoming deadlines</p>
+          ${deadlines.length
+            ? html`
+                <div className="compact-list">
+                  ${deadlines.map(
+                    (item) => html`
+                      <div key=${`deadline-${item.id}`} className="compact-list-row">
+                        <strong>${item.title}</strong>
+                        <span>${formatShortDate(item.dueDate)} · ${getAssignmentDuration(item)} min</span>
+                      </div>
+                    `,
+                  )}
+                </div>
+              `
+            : html`<p>No due dates saved yet. Add due dates so VIRELI can prioritize smarter.</p>`}
+          ${warnings.length
+            ? html`
+                <div className="warning-list">
+                  ${warnings.map((warning) => html`<p key=${warning.dateValue}>${warning.message}</p>`)}
+                </div>
+              `
+            : null}
+        </article>
+
+        ${missedItems.length
+          ? html`
+              <article className="feature-card missed-work-card">
+                <p className="eyebrow">Missed sessions</p>
+                ${missedItems.map((item) => {
+                  const nextWindowForMissed = freeWindows[0];
+                  return html`
+                    <div key=${`missed-${item.id}`} className="missed-work-row">
+                      <p>You missed your ${item.scheduledTime ? formatTimeLabel(item.scheduledTime) : ""} ${item.title} session.</p>
+                      <div>
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick=${() => nextWindowForMissed && onHomeworkReschedule(item.id, getDateInputValue(), minutesToTimeValue(nextWindowForMissed.startMinutes))}
+                          disabled=${!nextWindowForMissed}
+                        >
+                          Reschedule
+                        </button>
+                        <button type="button" className="secondary-button" onClick=${() => onHomeworkCompleteToggle(item.id)}>Mark complete</button>
+                        <button type="button" className="secondary-button" onClick=${() => onHomeworkDelete(item.id)}>Skip</button>
+                      </div>
+                    </div>
+                  `;
+                })}
+              </article>
+            `
+          : null}
+
         <article className="feature-card timeline-card">
           <div className="card-topline card-topline-simple">
             <span className="micro-badge">
               ${formatTimeLabel(minutesToTimeValue(schedule.wakeMinutes))} - ${formatTimeLabel(minutesToTimeValue(schedule.bedMinutes))}
             </span>
           </div>
-          <h3 className="font-display section-title-lg">What your day looks like</h3>
+          <h3 className="font-display section-title-lg">Available time</h3>
           <div className="day-chart" aria-label="Free and busy chart for today">
             <div className="day-chart-track">
               ${chartSegments.map(
@@ -3813,6 +4011,18 @@ function HomeTab({
               <span><i className="is-free"></i>Free</span>
               <span><i className="is-busy"></i>Busy</span>
             </div>
+          </div>
+          <div className="free-window-list">
+            ${freeWindows.length
+              ? freeWindows.map(
+                  (windowBlock) => html`
+                    <div key=${windowBlock.id} className="free-window-row">
+                      <strong>${windowBlock.label}</strong>
+                      <span>${windowBlock.durationLabel} available</span>
+                    </div>
+                  `,
+                )
+              : html`<p>No open windows left today.</p>`}
           </div>
           <div className="routine-timeline">
             ${schedule.timelineBlocks.map(
@@ -3833,9 +4043,6 @@ function HomeTab({
                 </div>
               `,
             )}
-          </div>
-          <div className="home-question-card">
-            <p>${freeQuestion}</p>
           </div>
         </article>
       </div>
@@ -3864,7 +4071,7 @@ function PlanTodayTab({
   const activeNotifications = getActivePlanNotifications(openHomeworkItems, today);
   const planTitle = getPlanTodayTitle(timeMode);
   const planLead =
-    "Add only the essentials, then let Calendar and Ask VIRELI help find the time.";
+    "Add the assignment. VIRELI estimates the time and places it into an open window.";
 
   function renderHomeworkItem(item) {
     return html`
@@ -3941,8 +4148,8 @@ function PlanTodayTab({
     >
       <div className="tab-heading">
         <div>
-          <p className="eyebrow">Plans</p>
-          <h1 className="font-display">${planTitle}</h1>
+          <p className="eyebrow">Assignments</p>
+          <h1 className="font-display">Assignments</h1>
           <p className="tab-heading-lead">${planLead}</p>
         </div>
         <span className="date-chip">${todayLabel}</span>
@@ -3951,10 +4158,10 @@ function PlanTodayTab({
       <div className="daily-grid">
         <article className="feature-card feature-card-support plan-builder-card">
           <div className="card-topline card-topline-simple">
-            <span className="mood-chip">Plan builder</span>
+            <span className="mood-chip">Fast entry</span>
           </div>
-          <h3 className="font-display section-title-lg">Add plan</h3>
-          <p>Name the plan, pick when it happens, and keep the schedule simple.</p>
+          <h3 className="font-display section-title-lg">Add assignment</h3>
+          <p>Subject, assignment, due date, estimate. VIRELI handles the first schedule suggestion.</p>
 
           ${activeNotifications.length
             ? html`
@@ -3981,55 +4188,80 @@ function PlanTodayTab({
             : null}
 
           <form className="homework-form" onSubmit=${onHomeworkSubmit}>
-            <label className="field-stack">
-              <span>Assignment or task name</span>
-              <input
-                className="planning-input"
-                value=${homeworkDraft.title}
-                onInput=${(event) => onHomeworkDraftChange("title", event.target.value)}
-                placeholder="Worksheet 4, essay draft, science review..."
-              />
-            </label>
-
             <div className="homework-form-grid">
               <label className="field-stack">
-                <span>Date</span>
+                <span>Subject</span>
+                ${savedClasses.length
+                  ? html`
+                      <select
+                        className="planning-input"
+                        value=${homeworkDraft.classId}
+                        onChange=${(event) => onHomeworkDraftChange("classId", event.target.value)}
+                      >
+                        <option value="">Choose subject</option>
+                        ${savedClasses.map(
+                          (schoolClass) => html`<option key=${schoolClass.id} value=${schoolClass.id}>${schoolClass.label}</option>`,
+                        )}
+                      </select>
+                    `
+                  : html`
+                      <input
+                        className="planning-input"
+                        value=${homeworkDraft.classLabel}
+                        onInput=${(event) => onHomeworkDraftChange("classLabel", event.target.value)}
+                        placeholder="Math"
+                      />
+                    `}
+              </label>
+              <label className="field-stack">
+                <span>Assignment</span>
+                <input
+                  className="planning-input"
+                  value=${homeworkDraft.title}
+                  onInput=${(event) => onHomeworkDraftChange("title", event.target.value)}
+                  placeholder="Math worksheet due Friday"
+                />
+              </label>
+              <label className="field-stack">
+                <span>Due date</span>
                 <input
                   className="planning-input"
                   type="date"
-                  value=${homeworkDraft.scheduledDate}
-                  onInput=${(event) => onHomeworkDraftChange("scheduledDate", event.target.value)}
+                  value=${homeworkDraft.dueDate}
+                  onInput=${(event) => onHomeworkDraftChange("dueDate", event.target.value)}
                 />
               </label>
               <label className="field-stack">
-                <span>Time</span>
+                <span>Estimated duration</span>
                 <input
                   className="planning-input"
-                  type="time"
-                  value=${homeworkDraft.scheduledTime}
-                  onInput=${(event) => onHomeworkDraftChange("scheduledTime", event.target.value)}
+                  type="number"
+                  min="5"
+                  step="5"
+                  inputMode="numeric"
+                  value=${homeworkDraft.estimatedMinutes}
+                  onInput=${(event) => onHomeworkDraftChange("estimatedMinutes", event.target.value)}
+                  placeholder=${String(estimateAssignmentMinutes(homeworkDraft.title, homeworkDraft.details))}
                 />
               </label>
-              <label className="field-stack">
-                <span>Frequency</span>
-                <select
-                  className="planning-input"
-                  value=${homeworkDraft.frequency}
-                  onChange=${(event) => onHomeworkDraftChange("frequency", event.target.value)}
-                >
-                  ${PLAN_FREQUENCY_OPTIONS.map(
-                    (frequency) => html`<option key=${frequency} value=${frequency}>${frequency}</option>`,
-                  )}
-                </select>
-              </label>
             </div>
+            <details className="optional-assignment-details">
+              <summary>Optional details</summary>
+              <textarea
+                className="planning-input compact-textarea"
+                value=${homeworkDraft.details}
+                onInput=${(event) => onHomeworkDraftChange("details", event.target.value)}
+                rows="3"
+                placeholder="Instructions, chapters, page numbers, or anything VIRELI should know."
+              ></textarea>
+            </details>
           </form>
 
           <div className="card-footer-row">
             <span>
               ${savedClasses.length
-                ? "Saved classes stay available after restart."
-                : "Add classes in Settings to start tracking homework."}
+                ? "VIRELI will suggest the first open work session."
+                : "Add subjects in Settings later to speed this up."}
             </span>
             <button
               type="button"
@@ -4037,13 +4269,13 @@ function PlanTodayTab({
               onClick=${onHomeworkSubmit}
               disabled=${!homeworkDraft.title.trim()}
             >
-              Save Plan
+              Add assignment
             </button>
           </div>
         </article>
 
         <article className="feature-card feature-card-quote feature-card-quote-wide">
-          <h3 className="font-display">Plans list</h3>
+          <h3 className="font-display">Assignment list</h3>
 
           ${homeworkItems.length
             ? html`
@@ -4054,20 +4286,20 @@ function PlanTodayTab({
               `
             : html`
                 <p>
-                  No plans added yet. Add one above when something needs doing.
+                  No assignments yet. Add one above and VIRELI will schedule the first work session.
                 </p>
               `}
 
           <blockquote className="font-display">
             ${completedHomeworkItems.length
-              ? `${completedHomeworkItems.length} finished. Keep going gently.`
-              : "A clear list makes the next step easier to trust."}
+              ? `${completedHomeworkItems.length} finished. VIRELI will keep recalculating the plan.`
+              : "A clear assignment list lets VIRELI decide what to schedule next."}
           </blockquote>
         </article>
 
         <article className="feature-card planner-chip-card feature-card-quote-wide">
-          <h3 className="font-display">Bottom planner</h3>
-          <p>Open plans stay here as simple chips.</p>
+          <h3 className="font-display">Scheduled work sessions</h3>
+          <p>These chips show when VIRELI has placed work on your day.</p>
           <div className="planner-chip-row">
             ${openHomeworkItems.length
               ? openHomeworkItems.map(
@@ -4142,6 +4374,11 @@ function CalendarTab({
   savedClasses,
   onCalendarMonthChange,
   onSelectedDateChange,
+  onHomeworkCompleteToggle,
+  onHomeworkReschedule,
+  onHomeworkDelete,
+  onCalendarTaskToggle,
+  onCalendarTaskDelete,
 }) {
   const today = getDateInputValue();
   const monthAnchor = calendarMonth || new Date();
@@ -4219,13 +4456,42 @@ function CalendarTab({
                 <div className="selected-day-list">
                   ${selectedDayItems.map(
                     (item) => html`
-                      <div key=${item.calendarId} className="selected-day-item">
-                        <strong>${item.title}</strong>
-                        <span>${[
-                          item.subject,
-                          item.scheduledTime ? formatTimeLabel(item.scheduledTime) : "",
-                          getFrequencyLabel(item.frequency),
-                        ].filter(Boolean).join(" · ")}</span>
+                      <div key=${item.calendarId} className=${cx("selected-day-item", `is-${item.source}`)}>
+                        <div>
+                          <strong>${item.title}</strong>
+                          <span>${[
+                            item.subject,
+                            item.scheduledTime ? formatTimeLabel(item.scheduledTime) : "",
+                            getFrequencyLabel(item.frequency),
+                          ].filter(Boolean).join(" · ")}</span>
+                        </div>
+                        <div className="calendar-detail-actions">
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick=${() => item.source === "homework" ? onHomeworkCompleteToggle(item.id) : onCalendarTaskToggle(item.id)}
+                          >
+                            Complete
+                          </button>
+                          ${item.source === "homework"
+                            ? html`
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  onClick=${() => onHomeworkReschedule(item.id, selectedDateValue, item.scheduledTime || "16:00")}
+                                >
+                                  Reschedule
+                                </button>
+                              `
+                            : null}
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick=${() => item.source === "homework" ? onHomeworkDelete(item.id) : onCalendarTaskDelete(item.id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </div>
                     `,
                   )}
@@ -4765,6 +5031,8 @@ function DashboardShell({
   onHomeworkReschedule,
   onCalendarMonthChange,
   onSelectedCalendarDateChange,
+  onCalendarTaskToggle,
+  onCalendarTaskDelete,
   onClassDraftChange,
   onClassAdd,
   onClassUpdate,
@@ -4801,6 +5069,12 @@ function DashboardShell({
         routine=${routine}
         homeworkItems=${homeworkItems}
         calendarTasks=${calendarTasks}
+        savedClasses=${savedClasses}
+        moodSelection=${moodSelection}
+        onTabChange=${onTabChange}
+        onHomeworkCompleteToggle=${onHomeworkCompleteToggle}
+        onHomeworkReschedule=${onHomeworkReschedule}
+        onHomeworkDelete=${onHomeworkDelete}
       />
     `;
   } else if (activeTab === "daily") {
@@ -4828,6 +5102,11 @@ function DashboardShell({
         savedClasses=${savedClasses}
         onCalendarMonthChange=${onCalendarMonthChange}
         onSelectedDateChange=${onSelectedCalendarDateChange}
+        onHomeworkCompleteToggle=${onHomeworkCompleteToggle}
+        onHomeworkReschedule=${onHomeworkReschedule}
+        onHomeworkDelete=${onHomeworkDelete}
+        onCalendarTaskToggle=${onCalendarTaskToggle}
+        onCalendarTaskDelete=${onCalendarTaskDelete}
       />
     `;
   } else if (activeTab === "daily-log") {
@@ -4988,6 +5267,7 @@ function App() {
   const [dailyLogs, setDailyLogs] = useState(loadDailyLogs);
   const [dailyLogSubmitted, setDailyLogSubmitted] = useState(false);
   const [classDraft, setClassDraft] = useState("");
+  const [undoToast, setUndoToast] = useState(null);
   const [isThemeTransitioning, setIsThemeTransitioning] = useState(false);
   const [timeMode, setTimeMode] = useState(() => getTimeOfDayMode());
   const previousThemeRef = useRef("default");
@@ -5003,6 +5283,23 @@ function App() {
   function persistAskConversation(nextMessages = messages) {
     saveAskHistory([]);
     setAskHistory([]);
+  }
+
+  function showUndoToast(message, undoAction) {
+    const id = makeId("undo");
+    setUndoToast({ id, message, undoAction });
+    window.setTimeout(() => {
+      setUndoToast((currentToast) => (currentToast?.id === id ? null : currentToast));
+    }, 7000);
+  }
+
+  function handleUndoToast() {
+    if (!undoToast?.undoAction) {
+      return;
+    }
+
+    undoToast.undoAction();
+    setUndoToast(null);
   }
 
   useEffect(() => {
@@ -5098,6 +5395,43 @@ function App() {
       .catch(() => {
         setGoogleAuthStatus("unconfigured");
       });
+  }, []);
+
+  useEffect(() => {
+    if (!/^https?:$/.test(window.location.protocol)) {
+      return;
+    }
+
+    fetch("/api/auth/me", { credentials: "same-origin" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((session) => {
+        if (!session?.authenticated || !session.user) {
+          return;
+        }
+
+        const user = session.user;
+        const now = new Date().toISOString();
+        const nextProfile = {
+          ...EMPTY_PROFILE,
+          connected: true,
+          guest: false,
+          name: user.name || user.email?.split("@")?.[0] || "VIRELI user",
+          email: user.email || "",
+          picture: user.picture || "",
+          googleSub: user.googleSub || "",
+          password: "",
+          authMode: "google-gis",
+          classSetupSkipped: profile.classSetupSkipped,
+          routineSetupSkipped: profile.routineSetupSkipped,
+          createdAt: profile.createdAt || user.createdAt || now,
+          updatedAt: now,
+        };
+
+        setProfile(nextProfile);
+        setProfileDraft(nextProfile);
+        setProfileStepComplete(true);
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -5213,36 +5547,56 @@ function App() {
     setProfileStepComplete(true);
   }
 
-  function handleGoogleCredential(response) {
-    const payload = decodeJwtPayload(response?.credential);
-    const email = String(payload?.email || "").trim();
+  async function handleGoogleCredential(response) {
+    const credential = String(response?.credential || "").trim();
 
-    if (!payload || !email) {
-      setGoogleAuthError("Google sign-in did not return an email. Try again.");
+    if (!credential) {
+      setGoogleAuthError("Google sign-in did not return a credential. Try again.");
       return;
     }
 
-    const now = new Date().toISOString();
-    const nextProfile = {
-      ...EMPTY_PROFILE,
-      connected: true,
-      guest: false,
-      name: payload.name || email.split("@")[0] || "VIRELI user",
-      email,
-      picture: payload.picture || "",
-      googleSub: payload.sub || "",
-      password: "",
-      authMode: "google-gis",
-      classSetupSkipped: profile.classSetupSkipped,
-      routineSetupSkipped: profile.routineSetupSkipped,
-      createdAt: profile.createdAt || now,
-      updatedAt: now,
-    };
-
     setGoogleAuthError("");
-    setProfile(nextProfile);
-    setProfileDraft(nextProfile);
-    setProfileStepComplete(true);
+    setGoogleAuthStatus("verifying");
+
+    try {
+      const authResponse = await fetch("/api/auth/google", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ credential }),
+      });
+      const authPayload = await authResponse.json().catch(() => ({}));
+
+      if (!authResponse.ok || !authPayload.authenticated || !authPayload.user) {
+        throw new Error(authPayload.error || "Google sign-in did not work. Please try again.");
+      }
+
+      const user = authPayload.user;
+      const now = new Date().toISOString();
+      const nextProfile = {
+        ...EMPTY_PROFILE,
+        connected: true,
+        guest: false,
+        name: user.name || user.email?.split("@")?.[0] || "VIRELI user",
+        email: user.email || "",
+        picture: user.picture || "",
+        googleSub: user.googleSub || "",
+        password: "",
+        authMode: "google-gis",
+        classSetupSkipped: profile.classSetupSkipped,
+        routineSetupSkipped: profile.routineSetupSkipped,
+        createdAt: profile.createdAt || user.createdAt || now,
+        updatedAt: now,
+      };
+
+      setProfile(nextProfile);
+      setProfileDraft(nextProfile);
+      setProfileStepComplete(true);
+      setGoogleAuthStatus("ready");
+    } catch (error) {
+      setGoogleAuthStatus(googleClientId ? "ready" : "unconfigured");
+      setGoogleAuthError(error.message || "Google sign-in did not work. Please try again.");
+    }
   }
 
   function handleGoogleFallbackClick() {
@@ -5278,6 +5632,12 @@ function App() {
   }
 
   function handleDisconnectProfile() {
+    if (/^https?:$/.test(window.location.protocol)) {
+      fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "same-origin",
+      }).catch(() => {});
+    }
     setProfile(EMPTY_PROFILE);
     setProfileDraft(EMPTY_PROFILE);
     setProfileStepComplete(false);
@@ -5419,6 +5779,10 @@ function App() {
     setHomeworkDraft((currentDraft) => ({
       ...currentDraft,
       [field]: value,
+      estimatedMinutes:
+        field === "title" && !currentDraft.estimatedMinutes
+          ? String(estimateAssignmentMinutes(value, currentDraft.details))
+          : currentDraft.estimatedMinutes,
     }));
   }
 
@@ -5429,7 +5793,24 @@ function App() {
     const topic = homeworkDraft.topic.trim() || title;
     const classLabel = homeworkDraft.classId
       ? getClassLabel(savedClasses, homeworkDraft.classId, "")
-      : "";
+      : normalizeClassName(homeworkDraft.classLabel || "");
+    const estimatedMinutes = Number(homeworkDraft.estimatedMinutes)
+      || estimateAssignmentMinutes(title, homeworkDraft.details || homeworkDraft.notes);
+    const targetDate = homeworkDraft.dueDate || getDateInputValue();
+    const today = getDateInputValue();
+    const scheduleDate = targetDate >= today ? today : targetDate;
+    const draftSchedule = getTodayScheduleBlocks({
+      routine,
+      homeworkItems,
+      calendarTasks,
+      dateValue: scheduleDate,
+    });
+    const bestWindow = findBestFreeWindow(
+      scheduleDate === today ? getRemainingSchedule(draftSchedule) : draftSchedule,
+      Math.min(estimatedMinutes, 90),
+    );
+    const scheduledDate = homeworkDraft.scheduledDate || scheduleDate;
+    const scheduledTime = homeworkDraft.scheduledTime || (bestWindow ? minutesToTimeValue(bestWindow.startMinutes) : "");
 
     if (!title) {
       return;
@@ -5439,10 +5820,13 @@ function App() {
       classLabel,
       topic,
       title,
-      details: (homeworkDraft.notes || homeworkDraft.details).trim(),
+      details: (homeworkDraft.details || homeworkDraft.notes).trim(),
       attachmentName: homeworkDraft.attachmentName,
     });
-    const steps = createHomeworkSteps(title, homeworkDraft.notes || homeworkDraft.details);
+    const steps = createHomeworkSteps(title, homeworkDraft.details || homeworkDraft.notes);
+    const splitNote = estimatedMinutes > 90
+      ? ` This looks bigger, so split it into ${Math.ceil(estimatedMinutes / 45)} short work sessions if needed.`
+      : "";
 
     setHomeworkItems((currentItems) => [
       {
@@ -5451,15 +5835,15 @@ function App() {
         classLabel,
         title,
         topic,
-        details: (homeworkDraft.notes || homeworkDraft.details).trim(),
-        notes: (homeworkDraft.notes || homeworkDraft.details).trim(),
-        dueDate: "",
+        details: (homeworkDraft.details || homeworkDraft.notes).trim(),
+        notes: (homeworkDraft.details || homeworkDraft.notes).trim(),
+        dueDate: homeworkDraft.dueDate,
         dueTime: "",
-        scheduledDate: homeworkDraft.scheduledDate,
-        scheduledTime: homeworkDraft.scheduledTime,
-        estimatedMinutes: homeworkDraft.estimatedMinutes,
+        scheduledDate,
+        scheduledTime,
+        estimatedMinutes: String(estimatedMinutes),
         priority: "Normal",
-        type: "Task",
+        type: "Assignment",
         frequency: homeworkDraft.frequency || "One time",
         steps,
         scheduledFor: homeworkDraft.scheduledFor,
@@ -5467,7 +5851,7 @@ function App() {
         attachmentName: homeworkDraft.attachmentName,
         attachmentType: homeworkDraft.attachmentType,
         attachmentPreview: homeworkDraft.attachmentPreview,
-        guidance,
+        guidance: `${guidance}${splitNote}`,
         completed: false,
         completedAt: "",
         createdAt: new Date().toISOString(),
@@ -5497,6 +5881,7 @@ function App() {
   }
 
   function handleHomeworkCompleteToggle(homeworkId) {
+    const previousItem = homeworkItems.find((item) => item.id === homeworkId);
     setHomeworkItems((currentItems) =>
       currentItems.map((item) => {
         if (item.id !== homeworkId) {
@@ -5512,9 +5897,20 @@ function App() {
         };
       }),
     );
+    if (previousItem) {
+      showUndoToast(
+        previousItem.completed ? "Assignment reopened — Undo" : "Assignment completed — Undo",
+        () => {
+          setHomeworkItems((currentItems) =>
+            currentItems.map((item) => (item.id === homeworkId ? previousItem : item)),
+          );
+        },
+      );
+    }
   }
 
   function handleHomeworkReschedule(homeworkId, scheduledDate, scheduledTime) {
+    const previousItem = homeworkItems.find((item) => item.id === homeworkId);
     setHomeworkItems((currentItems) =>
       currentItems.map((item) =>
         item.id === homeworkId
@@ -5527,12 +5923,25 @@ function App() {
           : item,
       ),
     );
+    if (previousItem) {
+      showUndoToast("Assignment rescheduled — Undo", () => {
+        setHomeworkItems((currentItems) =>
+          currentItems.map((item) => (item.id === homeworkId ? previousItem : item)),
+        );
+      });
+    }
   }
 
   function handleHomeworkDelete(homeworkId) {
+    const previousItem = homeworkItems.find((item) => item.id === homeworkId);
     setHomeworkItems((currentItems) =>
       currentItems.filter((item) => item.id !== homeworkId),
     );
+    if (previousItem) {
+      showUndoToast("Assignment deleted — Undo", () => {
+        setHomeworkItems((currentItems) => [previousItem, ...currentItems]);
+      });
+    }
   }
 
   function handleClassAdd(event) {
@@ -5843,6 +6252,56 @@ function App() {
       return pendingAnswer;
     }
 
+    const normalizedPrompt = prompt.toLowerCase();
+    const wantsNow = /what should i work on|work on right now|do right now|start now|next task/.test(normalizedPrompt);
+    const wantsTonight = /finish everything tonight|can i finish|enough time tonight|everything done/.test(normalizedPrompt);
+    const wantsSplit = /break up|split|divide|multiple sessions/.test(normalizedPrompt);
+
+    if (wantsNow) {
+      const recommendation = getNextAssignmentRecommendation({
+        homeworkItems,
+        routine,
+        calendarTasks,
+        mood: moodSelection,
+      });
+
+      return {
+        reply: recommendation.item
+          ? `Work on ${recommendation.item.title}. Start ${recommendation.startTime ? `at ${formatTimeLabel(recommendation.startTime)}` : "when you are ready"} for about ${formatDurationFromMinutes(recommendation.duration)}.`
+          : "You do not have an open assignment saved. Add one and I will choose a time.",
+        changed: false,
+      };
+    }
+
+    if (wantsTonight) {
+      const schedule = getRemainingSchedule(getTodayScheduleBlocks({ routine, homeworkItems, calendarTasks }));
+      const freeMinutes = getFreeTimeWindows(schedule).reduce((total, block) => total + block.endMinutes - block.startMinutes, 0);
+      const workload = homeworkItems
+        .filter((item) => !item.completed)
+        .reduce((total, item) => total + getAssignmentDuration(item), 0);
+      const difference = freeMinutes - workload;
+
+      return {
+        reply: difference >= 0
+          ? `Yes, if you stay focused. You have about ${formatDurationFromMinutes(freeMinutes)} open and about ${formatDurationFromMinutes(workload)} of work.`
+          : `Probably not all of it. You are short by about ${formatDurationFromMinutes(Math.abs(difference))}. Start with the closest due assignment first.`,
+        changed: false,
+      };
+    }
+
+    if (wantsSplit) {
+      const target = homeworkItems.find((item) => !item.completed && normalizedPrompt.includes(item.title.toLowerCase()))
+        || homeworkItems.find((item) => !item.completed);
+      if (!target) {
+        return { reply: "Add the assignment first, then I can split it into work sessions.", changed: false };
+      }
+      const sessions = Math.max(2, Math.ceil(getAssignmentDuration(target) / 45));
+      return {
+        reply: `Split ${target.title} into ${sessions} sessions of about ${formatDurationFromMinutes(Math.ceil(getAssignmentDuration(target) / sessions))}. I can schedule the first one if you ask me to move or schedule it.`,
+        changed: false,
+      };
+    }
+
     const calendarAction = buildAskCalendarAction(prompt);
 
     if (calendarAction) {
@@ -5854,7 +6313,6 @@ function App() {
       return { reply: calendarAction.reply, changed: false };
     }
 
-    const normalizedPrompt = prompt.toLowerCase();
     const wantsDueWeek = /due (this )?week|everything due|this week/.test(normalizedPrompt);
     const wantsFirst = /what .*first|do first|start first|priority/.test(normalizedPrompt);
 
@@ -5903,6 +6361,25 @@ function App() {
         recentUserPrompt: context.recentUserPrompt || "",
         recentAssistantResponse: context.recentAssistantResponse || "",
         recentMessages: context.recentMessages || [],
+        plannerContext: {
+          openAssignments: homeworkItems
+            .filter((item) => !item.completed)
+            .slice(0, 8)
+            .map((item) => ({
+              title: item.title,
+              subject: getAssignmentSubject(item, savedClasses),
+              dueDate: item.dueDate,
+              scheduledDate: item.scheduledDate,
+              scheduledTime: item.scheduledTime,
+              estimatedMinutes: getAssignmentDuration(item),
+            })),
+          freeWindows: getFreeTimeWindows(
+            getRemainingSchedule(getTodayScheduleBlocks({ routine, homeworkItems, calendarTasks })),
+          ).slice(0, 5).map((block) => ({
+            label: block.label,
+            minutes: block.endMinutes - block.startMinutes,
+          })),
+        },
       }),
     });
 
@@ -6186,16 +6663,9 @@ function App() {
                 <${AccountScreen}
                   key="account"
                   profile=${profile}
-                  profileDraft=${profileDraft}
-                  recoveryOpen=${recoveryOpen}
                   googleClientId=${googleClientId}
                   googleAuthStatus=${googleAuthStatus}
                   googleAuthError=${googleAuthError}
-                  onProfileDraftChange=${handleProfileDraftChange}
-                  onAccountSubmit=${handleAccountSubmit}
-                  onForgotPassword=${handleForgotPassword}
-                  onRecoverySelect=${handleRecoverySelect}
-                  onGoogleFallbackClick=${handleGoogleFallbackClick}
                   onContinueAsGuest=${handleContinueAsGuest}
                 />
               `
@@ -6262,6 +6732,8 @@ function App() {
                   onCalendarTaskSubmit=${handleCalendarTaskSubmit}
                   onCalendarMonthChange=${handleCalendarToday}
                   onSelectedCalendarDateChange=${setSelectedCalendarDate}
+                  onCalendarTaskToggle=${handleCalendarTaskToggle}
+                  onCalendarTaskDelete=${handleCalendarTaskDelete}
                   onClassDraftChange=${setClassDraft}
                   onClassAdd=${handleClassAdd}
                   onClassUpdate=${handleClassUpdate}
@@ -6301,6 +6773,15 @@ function App() {
                 />
               `}
       </${AnimatePresence}>
+
+      ${undoToast
+        ? html`
+            <div className="undo-toast" role="status">
+              <span>${undoToast.message}</span>
+              <button type="button" onClick=${handleUndoToast}>Undo</button>
+            </div>
+          `
+        : null}
     </div>
   `;
 }

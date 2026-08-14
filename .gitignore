@@ -4,3 +4,5 @@ __pycache__/
 .env
 .env.*
 node_modules/
+vireli_auth.sqlite3
+vireli_auth.sqlite3-*

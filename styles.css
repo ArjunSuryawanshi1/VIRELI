@@ -2027,22 +2027,30 @@ textarea {
   margin-top: 1.25rem;
 }
 
-.google-auth-panel {
-  max-width: 520px;
-  border-radius: 1.35rem;
+.account-screen {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.92)),
-    radial-gradient(circle at top right, rgba(var(--accent-bright-rgb), 0.14), transparent 42%);
+    radial-gradient(circle at top, rgba(var(--accent-rgb), 0.08), transparent 34rem),
+    #ffffff;
+  color: var(--text-main);
+}
+
+.google-auth-panel {
+  width: min(100%, 460px);
+  max-width: 460px;
+  padding: clamp(1.35rem, 4vw, 2rem);
+  border-radius: 1.35rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #ffffff;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.94),
-    0 24px 70px rgba(var(--accent-deep-rgb), 0.16);
+    0 24px 70px rgba(15, 23, 42, 0.12);
 }
 
 .google-auth-panel .mood-heading {
-  align-items: flex-start;
+  align-items: center;
   position: relative;
   z-index: 2;
-  text-align: left;
+  text-align: center;
 }
 
 .google-auth-panel .mood-heading h2 {
@@ -2073,8 +2081,16 @@ textarea {
   box-shadow: 0 12px 26px rgba(var(--accent-deep-rgb), 0.1);
 }
 
+.google-auth-brand {
+  margin: 0;
+  color: var(--text-main);
+  font-size: 0.82rem;
+  font-weight: 900;
+  letter-spacing: 0.22em;
+}
+
 .google-auth-panel .mood-control-row {
-  justify-content: flex-end;
+  justify-content: center;
   gap: 0.65rem;
 }
 
@@ -2088,6 +2104,11 @@ textarea {
   display: grid;
   min-height: 50px;
   place-items: center;
+}
+
+.google-identity-button-slot > div,
+.google-identity-button-slot iframe {
+  max-width: 100% !important;
 }
 
 .google-auth-provider-button {
@@ -2134,6 +2155,7 @@ textarea {
 
 .google-auth-status {
   color: var(--text-soft);
+  text-align: center;
 }
 
 .google-auth-error {
@@ -2144,12 +2166,47 @@ textarea {
   color: #991b1b;
 }
 
+.google-auth-config-notice {
+  padding: 0.85rem 0.95rem;
+  border: 1px solid rgba(217, 119, 6, 0.22);
+  border-radius: 1rem;
+  background: rgba(255, 251, 235, 0.78);
+  color: #7c2d12;
+  font-size: 0.88rem;
+  font-weight: 850;
+  line-height: 1.45;
+  text-align: center;
+}
+
 .google-auth-panel .secondary-button,
 .google-auth-panel .primary-button {
   min-height: 44px;
 }
 
+.google-auth-divider {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.7rem;
+  margin: 1.15rem 0 0.85rem;
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.google-auth-divider span {
+  height: 1px;
+  background: rgba(15, 23, 42, 0.1);
+}
+
+.google-auth-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .google-auth-panel .auth-secondary-button {
+  width: 100%;
   background: #111827;
   border-color: #111827;
   color: #ffffff;
@@ -3213,5 +3270,224 @@ textarea {
 
   .day-chart {
     padding: 0.75rem;
+  }
+}
+
+/* Intelligent planner redesign */
+.planner-dashboard-grid {
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+}
+
+.next-task-card {
+  grid-column: 1 / -1;
+  padding: clamp(1.4rem, 3vw, 2rem);
+  background:
+    radial-gradient(circle at top right, rgba(var(--accent-bright-rgb), 0.18), transparent 38%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(var(--accent-soft-rgb), 0.36));
+}
+
+.next-task-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.next-task-main h2 {
+  margin: 0;
+  color: var(--text-main);
+  font-size: clamp(2rem, 5vw, 3.8rem);
+  line-height: 0.98;
+}
+
+.next-task-main p,
+.next-task-meta {
+  color: var(--text-soft);
+  font-weight: 800;
+}
+
+.next-task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin: 1rem 0 1.25rem;
+}
+
+.next-task-meta span,
+.free-window-row,
+.compact-list-row {
+  border: 1px solid rgba(var(--accent-rgb), 0.1);
+  border-radius: 0.95rem;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.next-task-meta span {
+  padding: 0.55rem 0.75rem;
+}
+
+.next-task-actions {
+  justify-content: flex-start;
+}
+
+.progress-track {
+  height: 0.85rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.1);
+}
+
+.progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--red-deep), rgba(var(--accent-bright-rgb), 0.9));
+  transition: width 260ms ease;
+}
+
+.compact-list,
+.free-window-list,
+.warning-list {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.9rem;
+}
+
+.compact-list-row,
+.free-window-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem;
+}
+
+.compact-list-row span,
+.free-window-row span {
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.warning-list p,
+.missed-work-card {
+  border-color: rgba(217, 119, 6, 0.24);
+  background: rgba(255, 247, 237, 0.78);
+}
+
+.warning-list p {
+  margin: 0;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid rgba(217, 119, 6, 0.24);
+  border-radius: 0.9rem;
+  color: #7c2d12;
+  font-weight: 850;
+}
+
+.missed-work-row {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.missed-work-row div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.empty-action-state {
+  display: grid;
+  gap: 0.8rem;
+  max-width: 36rem;
+}
+
+.optional-assignment-details {
+  padding: 0.8rem;
+  border: 1px solid rgba(var(--accent-rgb), 0.1);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.optional-assignment-details summary {
+  cursor: pointer;
+  color: var(--red-deep);
+  font-weight: 900;
+}
+
+.optional-assignment-details textarea {
+  margin-top: 0.75rem;
+}
+
+.selected-day-item.is-homework {
+  border-left: 4px solid var(--red-deep);
+}
+
+.selected-day-item.is-task {
+  border-left: 4px solid #2563eb;
+}
+
+.calendar-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.65rem;
+}
+
+.calendar-detail-actions .secondary-button {
+  padding: 0.52rem 0.75rem;
+}
+
+.undo-toast {
+  position: fixed;
+  right: clamp(1rem, 3vw, 2rem);
+  bottom: clamp(1rem, 3vw, 2rem);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  max-width: min(92vw, 440px);
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  border-radius: 1rem;
+  background: rgba(17, 24, 39, 0.94);
+  color: #ffffff;
+  box-shadow: 0 18px 40px rgba(17, 24, 39, 0.24);
+}
+
+.undo-toast span {
+  font-weight: 850;
+}
+
+.undo-toast button {
+  color: #ffffff;
+  font-weight: 950;
+  text-decoration: underline;
+}
+
+@media (max-width: 900px) {
+  .planner-dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .next-task-main {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 720px) {
+  .compact-list-row,
+  .free-window-row,
+  .next-task-actions,
+  .calendar-detail-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .undo-toast {
+    right: 0.75rem;
+    bottom: 0.75rem;
+    left: 0.75rem;
+    justify-content: space-between;
   }
 }
