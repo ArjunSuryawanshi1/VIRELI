@@ -3,8 +3,12 @@ import os
 import base64
 import hashlib
 import hmac
+import re
+import secrets
 import sqlite3
+import smtplib
 import time
+from email.message import EmailMessage
 from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -19,6 +23,13 @@ OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 AUTH_DB_PATH = Path(os.environ.get("VIRELI_AUTH_DB_PATH", ROOT / "vireli_auth.sqlite3"))
 SESSION_COOKIE_NAME = "vireli_session"
 SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 14
+EMAIL_CODE_TTL_SECONDS = 60 * 10
+EMAIL_RESEND_COOLDOWN_SECONDS = 60
+EMAIL_REQUEST_WINDOW_SECONDS = 60 * 15
+EMAIL_REQUEST_LIMIT = 5
+EMAIL_VERIFY_LIMIT = 6
+EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+EMAIL_REQUEST_LOG = {}
 
 
 def get_session_secret():
@@ -81,17 +92,36 @@ def get_database_connection():
         )
         """
     )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS email_verifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL,
+            code_hash TEXT NOT NULL,
+            salt TEXT NOT NULL,
+            expires_at INTEGER NOT NULL,
+            used_at INTEGER,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_email_verifications_email ON email_verifications(email)"
+    )
     connection.commit()
     return connection
 
 
 def row_to_user(row):
+    google_sub = row["google_sub"]
     return {
         "id": row["id"],
-        "googleSub": row["google_sub"],
+        "googleSub": google_sub,
         "email": row["email"],
         "name": row["name"],
         "picture": row["picture"] or "",
+        "authMode": "email" if str(google_sub).startswith("email:") else "google-gis",
         "createdAt": row["created_at"],
         "updatedAt": row["updated_at"],
         "lastLoginAt": row["last_login_at"],
@@ -123,18 +153,67 @@ def upsert_google_user(id_info):
                 (email, name, picture, now, now, google_sub),
             )
         else:
-            connection.execute(
-                """
-                INSERT INTO users (google_sub, email, name, picture, created_at, updated_at, last_login_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (google_sub, email, name, picture, now, now, now),
-            )
+            email_user = connection.execute(
+                "SELECT * FROM users WHERE email = ? AND google_sub LIKE 'email:%'",
+                (email,),
+            ).fetchone()
+            if email_user:
+                connection.execute(
+                    """
+                    UPDATE users
+                    SET google_sub = ?, email = ?, name = ?, picture = ?, updated_at = ?, last_login_at = ?
+                    WHERE id = ?
+                    """,
+                    (google_sub, email, name, picture, now, now, email_user["id"]),
+                )
+            else:
+                connection.execute(
+                    """
+                    INSERT INTO users (google_sub, email, name, picture, created_at, updated_at, last_login_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (google_sub, email, name, picture, now, now, now),
+                )
         connection.commit()
         user = connection.execute(
             "SELECT * FROM users WHERE google_sub = ?",
             (google_sub,),
         ).fetchone()
+    return row_to_user(user)
+
+
+def upsert_email_user(email):
+    normalized_email = normalize_email(email)
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    email_subject = "email:" + hashlib.sha256(normalized_email.encode("utf-8")).hexdigest()
+    name = normalized_email.split("@")[0] or "VIRELI user"
+
+    with get_database_connection() as connection:
+        existing = connection.execute(
+            "SELECT * FROM users WHERE email = ? OR google_sub = ? ORDER BY id LIMIT 1",
+            (normalized_email, email_subject),
+        ).fetchone()
+        if existing:
+            connection.execute(
+                """
+                UPDATE users
+                SET email = ?, name = COALESCE(NULLIF(name, ''), ?), updated_at = ?, last_login_at = ?
+                WHERE id = ?
+                """,
+                (normalized_email, name, now, now, existing["id"]),
+            )
+            user_id = existing["id"]
+        else:
+            connection.execute(
+                """
+                INSERT INTO users (google_sub, email, name, picture, created_at, updated_at, last_login_at)
+                VALUES (?, ?, ?, '', ?, ?, ?)
+                """,
+                (email_subject, normalized_email, name, now, now, now),
+            )
+            user_id = connection.execute("SELECT last_insert_rowid()").fetchone()[0]
+        connection.commit()
+        user = connection.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     return row_to_user(user)
 
 
@@ -173,6 +252,218 @@ def verify_google_credential(credential):
     if int(id_info.get("exp", 0)) < int(time.time()):
         raise ValueError("Expired Google token")
     return id_info
+
+
+def normalize_email(email):
+    return " ".join(str(email or "").split()).lower()
+
+
+def is_valid_email(email):
+    return bool(EMAIL_PATTERN.match(normalize_email(email)))
+
+
+def hash_verification_code(code, salt):
+    return hashlib.sha256(f"{salt}:{code}".encode("utf-8")).hexdigest()
+
+
+def generate_verification_code():
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def check_email_request_limit(email):
+    now = int(time.time())
+    records = [
+        timestamp
+        for timestamp in EMAIL_REQUEST_LOG.get(email, [])
+        if now - timestamp < EMAIL_REQUEST_WINDOW_SECONDS
+    ]
+    if records and now - records[-1] < EMAIL_RESEND_COOLDOWN_SECONDS:
+        return False, EMAIL_RESEND_COOLDOWN_SECONDS - (now - records[-1])
+    if len(records) >= EMAIL_REQUEST_LIMIT:
+        return False, EMAIL_REQUEST_WINDOW_SECONDS - (now - records[0])
+    records.append(now)
+    EMAIL_REQUEST_LOG[email] = records
+    return True, 0
+
+
+def store_email_verification(email, code):
+    salt = secrets.token_urlsafe(18)
+    now = int(time.time())
+    expires_at = now + EMAIL_CODE_TTL_SECONDS
+    code_hash = hash_verification_code(code, salt)
+
+    with get_database_connection() as connection:
+        connection.execute(
+            """
+            UPDATE email_verifications
+            SET used_at = ?
+            WHERE email = ? AND used_at IS NULL
+            """,
+            (now, email),
+        )
+        connection.execute(
+            """
+            INSERT INTO email_verifications (email, code_hash, salt, expires_at, used_at, attempts, created_at)
+            VALUES (?, ?, ?, ?, NULL, 0, ?)
+            """,
+            (email, code_hash, salt, expires_at, now),
+        )
+        connection.commit()
+
+
+def invalidate_email_verifications(email):
+    now = int(time.time())
+    with get_database_connection() as connection:
+        connection.execute(
+            """
+            UPDATE email_verifications
+            SET used_at = ?
+            WHERE email = ? AND used_at IS NULL
+            """,
+            (now, normalize_email(email)),
+        )
+        connection.commit()
+
+
+def verify_email_code(email, code):
+    normalized_email = normalize_email(email)
+    clean_code = re.sub(r"\D", "", str(code or ""))
+
+    if len(clean_code) != 6:
+        return False, "incorrect", None
+
+    now = int(time.time())
+    with get_database_connection() as connection:
+        record = connection.execute(
+            """
+            SELECT * FROM email_verifications
+            WHERE email = ? AND used_at IS NULL
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (normalized_email,),
+        ).fetchone()
+
+        if not record:
+            return False, "incorrect", None
+        if int(record["expires_at"]) < now:
+            connection.execute("UPDATE email_verifications SET used_at = ? WHERE id = ?", (now, record["id"]))
+            connection.commit()
+            return False, "expired", None
+        if int(record["attempts"]) >= EMAIL_VERIFY_LIMIT:
+            connection.execute("UPDATE email_verifications SET used_at = ? WHERE id = ?", (now, record["id"]))
+            connection.commit()
+            return False, "incorrect", None
+
+        submitted_hash = hash_verification_code(clean_code, record["salt"])
+        if not hmac.compare_digest(submitted_hash, record["code_hash"]):
+            connection.execute(
+                "UPDATE email_verifications SET attempts = attempts + 1 WHERE id = ?",
+                (record["id"],),
+            )
+            connection.commit()
+            return False, "incorrect", None
+
+        connection.execute("UPDATE email_verifications SET used_at = ? WHERE id = ?", (now, record["id"]))
+        connection.commit()
+
+    return True, "", upsert_email_user(normalized_email)
+
+
+def build_verification_email(email, code):
+    from_address = os.environ.get("VIRELI_EMAIL_FROM", "").strip() or os.environ.get("VIRELI_SMTP_USERNAME", "").strip()
+    message = EmailMessage()
+    message["Subject"] = "Your VIRELI verification code"
+    message["From"] = from_address or "VIRELI <no-reply@vireli.local>"
+    message["To"] = email
+    message.set_content(
+        "\n".join(
+            [
+                "Your verification code is:",
+                "",
+                code,
+                "",
+                "This code expires in 10 minutes.",
+                "",
+                "Didn't request this? You can ignore this email.",
+            ]
+        )
+    )
+    message.add_alternative(
+        f"""
+        <div style="font-family: Manrope, Arial, sans-serif; color: #111827; line-height: 1.5;">
+          <h1 style="font-size: 22px; margin: 0 0 12px;">VIRELI</h1>
+          <p>Your verification code is:</p>
+          <div style="font-size: 34px; font-weight: 800; letter-spacing: 8px; margin: 16px 0;">{code}</div>
+          <p>This code expires in 10 minutes.</p>
+          <p style="color: #6b7280;">Didn't request this? You can ignore this email.</p>
+        </div>
+        """,
+        subtype="html",
+    )
+    return message
+
+
+def send_verification_email(email, code):
+    dev_mode = os.environ.get("VIRELI_EMAIL_DEV_MODE", "").strip().lower() == "true"
+    host = os.environ.get("VIRELI_SMTP_HOST", "").strip()
+    username = os.environ.get("VIRELI_SMTP_USERNAME", "").strip()
+    password = os.environ.get("VIRELI_SMTP_PASSWORD", "").strip()
+    from_address = os.environ.get("VIRELI_EMAIL_FROM", "").strip() or username
+    port = int(os.environ.get("VIRELI_SMTP_PORT", "587"))
+    use_tls = os.environ.get("VIRELI_SMTP_TLS", "true").strip().lower() != "false"
+
+    if dev_mode and not host:
+        print(f"[VIRELI email dev mode] Verification code for {email}: {code}", flush=True)
+        return {"sent": True, "devCode": code}
+
+    if not host or not from_address:
+        raise RuntimeError("Email service is not configured")
+
+    message = build_verification_email(email, code)
+    if from_address:
+        message.replace_header("From", from_address)
+
+    with smtplib.SMTP(host, port, timeout=20) as smtp:
+        if use_tls:
+            smtp.starttls()
+        if username and password:
+            smtp.login(username, password)
+        smtp.send_message(message)
+
+    return {"sent": True}
+
+
+def start_email_verification(email):
+    normalized_email = normalize_email(email)
+    if not is_valid_email(normalized_email):
+        return False, HTTPStatus.BAD_REQUEST, {"error": "Enter a valid email address."}
+
+    allowed, retry_after = check_email_request_limit(normalized_email)
+    if not allowed:
+        return False, HTTPStatus.TOO_MANY_REQUESTS, {
+            "error": "Please wait before requesting another code.",
+            "retryAfter": max(1, int(retry_after)),
+        }
+
+    code = generate_verification_code()
+    store_email_verification(normalized_email, code)
+    try:
+        send_verification_email(normalized_email, code)
+    except RuntimeError as error:
+        invalidate_email_verifications(normalized_email)
+        return False, HTTPStatus.SERVICE_UNAVAILABLE, {"error": str(error)}
+    except (OSError, smtplib.SMTPException) as error:
+        invalidate_email_verifications(normalized_email)
+        return False, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Verification email could not be sent."}
+
+    return True, HTTPStatus.OK, {
+        "ok": True,
+        "email": normalized_email,
+        "message": "A verification code has been sent.",
+        "expiresIn": EMAIL_CODE_TTL_SECONDS,
+        "resendCooldown": EMAIL_RESEND_COOLDOWN_SECONDS,
+    }
 
 
 def build_fallback_reply(prompt, response_type):
@@ -434,6 +725,57 @@ class VireliRequestHandler(SimpleHTTPRequestHandler):
                 user = upsert_google_user(id_info)
             except (RuntimeError, ValueError) as error:
                 self.send_json(HTTPStatus.UNAUTHORIZED, {"error": str(error)})
+                return
+
+            self.send_json(
+                HTTPStatus.OK,
+                {
+                    "authenticated": True,
+                    "user": user,
+                },
+                {"Set-Cookie": self.build_session_cookie_header(user["id"])},
+            )
+            return
+
+        if route in ("/api/auth/email/start", "/api/auth/email/resend"):
+            try:
+                payload = self.read_json_body()
+            except (ValueError, json.JSONDecodeError):
+                self.send_json(HTTPStatus.BAD_REQUEST, {"error": "Invalid JSON"})
+                return
+
+            email = normalize_email(payload.get("email"))
+            _, status, response_payload = start_email_verification(email)
+            if route == "/api/auth/email/resend" and status == HTTPStatus.OK:
+                response_payload["message"] = "A new code has been sent."
+            self.send_json(status, response_payload)
+            return
+
+        if route == "/api/auth/email/verify":
+            try:
+                payload = self.read_json_body()
+            except (ValueError, json.JSONDecodeError):
+                self.send_json(HTTPStatus.BAD_REQUEST, {"error": "Invalid JSON"})
+                return
+
+            email = normalize_email(payload.get("email"))
+            code = str(payload.get("code") or "").strip()
+            if not is_valid_email(email):
+                self.send_json(HTTPStatus.BAD_REQUEST, {"error": "Enter a valid email address."})
+                return
+
+            verified, reason, user = verify_email_code(email, code)
+            if not verified:
+                if reason == "expired":
+                    self.send_json(
+                        HTTPStatus.GONE,
+                        {"error": "This code has expired. Send a new code."},
+                    )
+                else:
+                    self.send_json(
+                        HTTPStatus.UNAUTHORIZED,
+                        {"error": "That code isn’t correct. Try again."},
+                    )
                 return
 
             self.send_json(
