@@ -1,0 +1,17 @@
+{
+  "name": "VIRELI",
+  "short_name": "VIRELI",
+  "description": "An intelligent student planner that helps you know what to do next.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#fffafa",
+  "theme_color": "#bc1c2c",
+  "icons": [
+    {
+      "src": "./icons/vireli-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

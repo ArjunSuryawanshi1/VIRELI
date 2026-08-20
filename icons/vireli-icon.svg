@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="VIRELI">
+  <rect width="512" height="512" rx="116" fill="#fffafa"/>
+  <rect x="36" y="36" width="440" height="440" rx="96" fill="#bc1c2c" opacity="0.1"/>
+  <path d="M128 128l89 256h78l89-256h-70l-58 184-58-184h-70z" fill="#660e18"/>
+  <circle cx="366" cy="134" r="24" fill="#e54c5c"/>
+  <circle cx="146" cy="370" r="16" fill="#e54c5c"/>
+</svg>

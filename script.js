@@ -4,12 +4,24 @@ const html = htm.bind(React.createElement);
 
 const NAV_ITEMS = [
   { id: "home", label: "Home" },
-  { id: "calendar", label: "Calendar" },
+  { id: "assignments", label: "Assignments" },
   { id: "routine", label: "Your Routine" },
-  { id: "daily-log", label: "Daily Log" },
   { id: "ask", label: "Ask VIRELI" },
+  { id: "calendar", label: "Calendar" },
+  { id: "daily-log", label: "Daily Log" },
   { id: "improve", label: "How can we improve" },
   { id: "settings", label: "Settings" },
+];
+
+const PRIMARY_NAV_ITEMS = NAV_ITEMS.filter((item) =>
+  ["home", "assignments", "routine", "ask", "calendar", "daily-log"].includes(item.id),
+);
+const MOBILE_NAV_ITEMS = [
+  { id: "home", label: "Home" },
+  { id: "assignments", label: "Assignments" },
+  { id: "ask", label: "Ask" },
+  { id: "calendar", label: "Calendar" },
+  { id: "more", label: "More" },
 ];
 
 const CLASS_STORAGE_KEY = "vireli.savedClasses.v1";
@@ -37,7 +49,7 @@ const DEFAULT_CLASS_OPTIONS = [
 
 const MOOD_OPTIONS = [
   { id: "good", label: "Good", text: "Bright, lifted, and ready enough." },
-  { id: "ok", label: "Ok", text: "Steady, neutral, or still waking up." },
+  { id: "ok", label: "Okay", text: "Steady, neutral, or still waking up." },
   { id: "bad", label: "Bad", text: "Heavy, tired, stressed, or low." },
 ];
 
@@ -81,6 +93,19 @@ const EMPTY_PROFILE = {
   authMode: "",
   classSetupSkipped: false,
   routineSetupSkipped: false,
+  primaryUse: "",
+  setupComplete: false,
+  setupStep: 0,
+  timezone: "",
+  schedulingPreferences: {
+    breakPreference: "Balanced",
+    earliestFlexibleTime: "",
+    latestFlexibleTime: "",
+    defaultDurationBehavior: "Estimate from task",
+    automaticRescheduling: true,
+    askBeforeMoving: true,
+    moodAffectsScheduling: true,
+  },
   createdAt: "",
   updatedAt: "",
 };
@@ -88,7 +113,7 @@ const EMPTY_PROFILE = {
 const EMPTY_ROUTINE_DRAFT = {
   wakeTime: "",
   bedTime: "",
-  dailyActivities: [{ id: "activity-1", name: "", durationMinutes: "", usualTime: "" }],
+  dailyActivities: [],
   mealTimes: [],
   preferredDailyWorkloadMinutes: "",
   preferredWorkloadLabel: "",
@@ -102,6 +127,10 @@ const EMPTY_CALENDAR_TASK_DRAFT = {
   title: "",
   subject: "",
   itemType: "Task",
+  flexible: true,
+  fixed: false,
+  days: "One time",
+  preferredTime: "",
   scheduledDate: "",
   scheduledTime: "",
   endTime: "",
@@ -143,8 +172,9 @@ const EMPTY_FEEDBACK_DRAFT = {
   text: "",
 };
 
-const INTRO_ANIMATION_SECONDS = 5.1;
-const INTRO_SCREEN_DURATION_MS = 7200;
+const APP_VERSION = "day12-intelligent-scheduling-20260820b";
+const INTRO_ANIMATION_SECONDS = 0.35;
+const INTRO_SCREEN_DURATION_MS = 0;
 const THEME_TRANSITION_DURATION_MS = 2000;
 const DAY_MODE_START_HOUR = 3;
 const REFLECTION_MODE_START_HOUR = 15;
@@ -158,12 +188,14 @@ const PRIORITY_OPTIONS = ["Low", "Normal", "High"];
 const HOMEWORK_TYPE_OPTIONS = ["Task", "Event"];
 const PLAN_FREQUENCY_OPTIONS = ["Never", "Daily", "Weekdays", "Weekly", "Monthly", "Custom"];
 const WORKLOAD_OPTIONS = [
-  { id: "1-2", label: "1-2 hours", minutes: 120 },
-  { id: "2-3", label: "2-3 hours", minutes: 180 },
-  { id: "3-4", label: "3-4 hours", minutes: 240 },
-  { id: "4-plus", label: "4+ hours", minutes: 300 },
+  { id: "light", label: "Light", minutes: 120 },
+  { id: "balanced", label: "Balanced", minutes: 180 },
+  { id: "focused", label: "Focused", minutes: 240 },
   { id: "custom", label: "Custom", minutes: "" },
 ];
+const PRIMARY_USE_OPTIONS = ["School", "Work", "Other"];
+const ROUTINE_DAY_OPTIONS = ["Every day", "Weekdays", "Weekends", "Custom"];
+const SETUP_STEPS = ["About You", "Mood Pulse", "Schedule Basics", "Your Routine"];
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const REMINDER_TIMING_OPTIONS = [
   "At planned time",
@@ -243,13 +275,11 @@ const RECOVERY_OPTIONS = [
   },
 ];
 const FEEDBACK_AREAS = [
-  "Scheduling",
-  "Calendar",
-  "AI",
-  "Routine",
-  "Design",
-  "Bugs",
-  "Feature requests",
+  "Something didn’t work",
+  "VIRELI misunderstood me",
+  "Scheduling problem",
+  "Feature idea",
+  "Design feedback",
 ];
 
 const MOOD_DETAILS = {
@@ -524,6 +554,10 @@ function normalizeRoutineEntry(entry = {}) {
           name: String(item.name || item.label || "").trim(),
           durationMinutes: String(item.durationMinutes || "").trim(),
           usualTime: String(item.usualTime || item.time || "").trim(),
+          days: String(item.days || "Weekdays").trim(),
+          fixed: item.fixed !== false,
+          flexible: Boolean(item.flexible),
+          active: item.active !== false,
         };
       }
 
@@ -532,27 +566,22 @@ function normalizeRoutineEntry(entry = {}) {
         name: String(item || "").trim(),
         durationMinutes: "",
         usualTime: "",
+        days: "Weekdays",
+        fixed: true,
+        flexible: false,
+        active: true,
       };
     })
     .filter((item) => item.name || item.durationMinutes || item.usualTime)
     .slice(0, 8);
-  const mealTimes = Array.isArray(entry.mealTimes)
-    ? entry.mealTimes.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 6)
-    : String(entry.mealTimes || "")
-      .split(/\n|,/)
-      .map((item) => item.trim())
-      .filter(Boolean)
-      .slice(0, 6);
 
   return {
     ...EMPTY_ROUTINE_DRAFT,
     ...entry,
     wakeTime: String(entry.wakeTime || ""),
     bedTime: String(entry.bedTime || ""),
-    dailyActivities: dailyActivities.length
-      ? dailyActivities
-      : [{ id: "activity-1", name: "", durationMinutes: "", usualTime: "" }],
-    mealTimes: mealTimes.length ? mealTimes : [""],
+    dailyActivities,
+    mealTimes: [],
     preferredDailyWorkloadMinutes: String(entry.preferredDailyWorkloadMinutes || ""),
     preferredWorkloadLabel: String(entry.preferredWorkloadLabel || ""),
     weekdayWorkloadMinutes: String(entry.weekdayWorkloadMinutes || entry.preferredDailyWorkloadMinutes || ""),
@@ -592,6 +621,10 @@ function saveRoutine(routineDraft) {
         name: String(item.name || "").trim(),
         durationMinutes: String(item.durationMinutes || "").trim(),
         usualTime: String(item.usualTime || "").trim(),
+        days: String(item.days || "Weekdays").trim(),
+        fixed: item.fixed !== false,
+        flexible: Boolean(item.flexible),
+        active: item.active !== false,
       }))
       .filter((item) => item.name || item.durationMinutes || item.usualTime),
     mealTimes: [],
@@ -781,6 +814,22 @@ function getMonthGridDates(anchorDate) {
       value: getDateInputValue(date),
       day: date.getDate(),
       isCurrentMonth: date.getMonth() === month,
+      isToday: getDateInputValue(date) === getDateInputValue(),
+    };
+  });
+}
+
+function getWeekDates(anchorDate = new Date()) {
+  const start = new Date(anchorDate);
+  start.setDate(start.getDate() - start.getDay());
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return {
+      date,
+      value: getDateInputValue(date),
+      day: date.getDate(),
+      label: date.toLocaleDateString(undefined, { weekday: "short" }),
       isToday: getDateInputValue(date) === getDateInputValue(),
     };
   });
@@ -1009,11 +1058,15 @@ function detectAskFrequency(prompt) {
     return `Every ${weekdayName.charAt(0).toUpperCase()}${weekdayName.slice(1)}`;
   }
 
+  if (/\b(monday through friday|monday to friday|school days|school day)\b/.test(normalized)) {
+    return "Weekdays";
+  }
+
   if (/\b(every day|daily)\b/.test(normalized)) {
     return "Daily";
   }
 
-  if (/\b(every weekday|weekdays|weekday)\b/.test(normalized)) {
+    if (/\b(every weekday|weekdays|weekday)\b/.test(normalized)) {
     return "Weekdays";
   }
 
@@ -1104,6 +1157,7 @@ function getTodayScheduleBlocks({
 }) {
   const { wakeMinutes, bedMinutes } = getRoutineAwakeRange(routine);
   const routineBlocks = (routine.dailyActivities || [])
+    .filter((activity) => activity.active !== false)
     .map((activity) => {
       const startMinutes = parseLooseTimeToMinutes(activity.usualTime);
       const duration = Number(activity.durationMinutes);
@@ -1117,6 +1171,7 @@ function getTodayScheduleBlocks({
         id: activity.id || makeId("routine-block"),
         source: "routine",
         title: activity.name,
+        fixed: activity.fixed !== false,
         startMinutes: adjustedStart,
         endMinutes: adjustedStart + duration,
       };
@@ -1512,6 +1567,46 @@ function getTodayProgress(homeworkItems = []) {
     completed,
     remaining: Math.max(0, todayItems.length - completed),
     percent: todayItems.length ? Math.round((completed / todayItems.length) * 100) : 0,
+  };
+}
+
+function getTimeGreeting(date = new Date()) {
+  const hour = date.getHours();
+  if (hour < 12) {
+    return "Good morning";
+  }
+  if (hour < 18) {
+    return "Good afternoon";
+  }
+  return "Good evening";
+}
+
+function getFirstName(profile = EMPTY_PROFILE) {
+  return String(profile.name || "").trim().split(/\s+/)[0] || "there";
+}
+
+function getStarterTasks(primaryUse = "School") {
+  const use = String(primaryUse || "School").toLowerCase();
+  if (use === "work") {
+    return ["Add one deadline", "Block a meeting", "Plan a focus session"];
+  }
+  if (use === "other") {
+    return ["Add one task", "Block one routine", "Pick one thing for today"];
+  }
+  return ["Add one assignment", "Add your school day", "Plan a study block"];
+}
+
+function getTomorrowPreview({ homeworkItems = [], calendarTasks = [], routine = EMPTY_ROUTINE_DRAFT }) {
+  const tomorrow = addDaysToDateValue(getDateInputValue(), 1);
+  const schedule = getTodayScheduleBlocks({ routine, homeworkItems, calendarTasks, dateValue: tomorrow });
+  const openItems = [
+    ...homeworkItems.filter((item) => !item.completed && getItemCalendarDate(item) === tomorrow),
+    ...calendarTasks.filter((task) => !task.completed && getItemCalendarDate(task) === tomorrow),
+  ].slice(0, 3);
+  return {
+    dateValue: tomorrow,
+    freeWindows: getFreeTimeWindows(schedule).slice(0, 2),
+    items: openItems,
   };
 }
 
@@ -3409,10 +3504,10 @@ function GraphBackdrop() {
   `;
 }
 
-function IntroScreen() {
+function OpeningScreen({ onGetStarted, onSignIn }) {
   return html`
     <${motion.section}
-      className="intro-screen min-h-screen relative flex items-center justify-center overflow-hidden px-6"
+      className="intro-screen opening-screen min-h-screen relative flex items-center justify-center overflow-hidden px-6"
       initial=${{ opacity: 0 }}
       animate=${{ opacity: 1 }}
       exit=${{ opacity: 0 }}
@@ -3421,63 +3516,143 @@ function IntroScreen() {
       <div className="intro-haze intro-haze-left"></div>
       <div className="intro-haze intro-haze-right"></div>
       <div className="intro-grid"></div>
-      <div className="intro-title-shell">
+      <div className="intro-title-shell opening-title-shell">
         <${motion.div}
           initial=${{
-            x: -260,
             opacity: 0,
-            filter: "blur(18px)",
-            scale: 0.94,
+            filter: "blur(16px)",
+            scale: 0.92,
           }}
           animate=${{
-            x: [-260, -40, 0, 0],
-            opacity: [0, 0.72, 1, 1],
-            filter: ["blur(18px)", "blur(4px)", "blur(0px)", "blur(0px)"],
-            scale: [0.94, 0.99, 1.02, 1],
+            opacity: 1,
+            filter: "blur(0px)",
+            scale: 1,
           }}
           transition=${{
-            duration: INTRO_ANIMATION_SECONDS - 1.25,
-            times: [0, 0.52, 0.82, 1],
+            duration: 0.7,
             ease: [0.16, 1, 0.3, 1],
           }}
         >
-          <span className="intro-overline">Your intelligent student planner</span>
-          <h1 className="intro-word font-display">VIRELI</h1>
+          <div className="opening-logo-shell">
+            <${VireliLogoMark} animated=${true} />
+          </div>
+          <h1 className="intro-word opening-word font-display">Vireli</h1>
+          <p className="intro-overline opening-overline">Your day, organized around you.</p>
           <p className="intro-promise">
-            Tell VIRELI what you need to do. VIRELI figures out when.
+            Plan less. Know what to do next.
           </p>
+          <div className="opening-action-row">
+            <button type="button" className="primary-button opening-primary" onClick=${onGetStarted}>
+              Get Started
+            </button>
+            <button type="button" className="secondary-button opening-secondary" onClick=${onSignIn}>
+              Sign In
+            </button>
+          </div>
         </${motion.div}>
-        <${motion.p}
-          className="intro-credit"
-          initial=${{ opacity: 0, y: 10, filter: "blur(7px)" }}
-          animate=${{ opacity: [0, 0, 0.86, 0.86], y: [10, 10, 0, 0], filter: ["blur(7px)", "blur(7px)", "blur(0px)", "blur(0px)"] }}
-          transition=${{
-            duration: 1.9,
-            times: [0, 0.34, 0.72, 1],
-            delay: INTRO_ANIMATION_SECONDS - 1.05,
-            ease: [0.22, 1, 0.36, 1],
-          }}
-        >
-          by KRIBU STUDIOS
-        </${motion.p}>
         <${motion.div}
-          className="intro-logo-transition"
-          initial=${{ opacity: 0, y: 30, scale: 0.48, rotate: -8, filter: "blur(10px)" }}
-          animate=${{
-            opacity: [0, 1, 1],
-            y: [30, 0, -8],
-            scale: [0.48, 1.04, 0.96],
-            rotate: [-8, 0, 0],
-            filter: ["blur(10px)", "blur(0px)", "blur(0px)"],
-          }}
+          className="opening-preview-card"
+          initial=${{ opacity: 0, y: 18 }}
+          animate=${{ opacity: 1, y: 0 }}
           transition=${{
-            duration: 1.45,
-            times: [0, 0.78, 1],
-            delay: INTRO_ANIMATION_SECONDS + 0.28,
+            duration: 0.55,
+            delay: 0.22,
             ease: [0.22, 1, 0.36, 1],
           }}
         >
-          <${VireliLogoMark} animated=${true} />
+          <span>Right now</span>
+          <strong>Biology review</strong>
+          <small>4:15-4:45 PM</small>
+        </${motion.div}>
+      </div>
+    </${motion.section}>
+  `;
+}
+
+function SetupProgress({ step }) {
+  return html`
+    <div className="setup-progress" aria-label=${`Setup step ${step} of ${SETUP_STEPS.length}`}>
+      ${SETUP_STEPS.map(
+        (label, index) => html`
+          <span
+            key=${label}
+            className=${cx("setup-progress-dot", index + 1 <= step && "is-active")}
+            title=${label}
+          ></span>
+        `,
+      )}
+    </div>
+  `;
+}
+
+function SetupAboutScreen({
+  profileDraft,
+  onProfileDraftChange,
+  onContinue,
+}) {
+  const canContinue = Boolean(profileDraft.name.trim() && profileDraft.primaryUse);
+
+  return html`
+    <${motion.section}
+      className="mood-screen min-h-screen relative flex items-center justify-center overflow-hidden px-5 py-8 sm:px-8"
+      initial=${{ opacity: 0 }}
+      animate=${{ opacity: 1 }}
+      exit=${{ opacity: 0, scale: 0.985 }}
+      transition=${{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <${GraphBackdrop} />
+      <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col items-center gap-5">
+        <${SetupProgress} step=${1} />
+        <${motion.div}
+          className="mood-panel setup-panel"
+          initial=${{ opacity: 0, y: 28 }}
+          animate=${{ opacity: 1, y: 0 }}
+          transition=${{ duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <div className="mood-heading mood-heading-centered">
+            <div className="mood-pulse-brand-mark font-display" aria-hidden="true">V</div>
+            <p className="eyebrow">Setup 1 of 4 · About You</p>
+            <h2 className="font-display">What should VIRELI call you?</h2>
+            <p>Tell VIRELI what exists first. Then it can help decide what matters now.</p>
+          </div>
+
+          <div className="setup-form-stack">
+            <label className="field-stack">
+              <span>Name</span>
+              <input
+                className="planning-input"
+                value=${profileDraft.name}
+                onInput=${(event) => onProfileDraftChange("name", event.target.value)}
+                placeholder="Your name"
+                autoComplete="given-name"
+              />
+            </label>
+
+            <div className="field-stack">
+              <span>Primary use</span>
+              <div className="setup-choice-grid">
+                ${PRIMARY_USE_OPTIONS.map(
+                  (option) => html`
+                    <button
+                      key=${option}
+                      type="button"
+                      className=${cx("mood-choice setup-choice", profileDraft.primaryUse === option && "is-selected")}
+                      aria-pressed=${profileDraft.primaryUse === option}
+                      onClick=${() => onProfileDraftChange("primaryUse", option)}
+                    >
+                      <span className="mood-choice-label">${option}</span>
+                    </button>
+                  `,
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="mood-control-row">
+            <button type="button" className="primary-button" disabled=${!canContinue} onClick=${onContinue}>
+              Continue
+            </button>
+          </div>
         </${motion.div}>
       </div>
     </${motion.section}>
@@ -3486,8 +3661,13 @@ function IntroScreen() {
 
 function MoodCheckInScreen({
   moodSelection,
+  moodNote,
   onMoodSelect,
+  onMoodNoteChange,
+  onMoodContinue,
+  onMoodSkip,
 }) {
+  const showNote = moodSelection === "ok" || moodSelection === "bad";
   return html`
     <${motion.section}
       className="mood-screen min-h-screen relative flex items-center justify-center overflow-hidden px-5 py-8 sm:px-8"
@@ -3499,6 +3679,7 @@ function MoodCheckInScreen({
       <${GraphBackdrop} />
 
       <div className="relative z-10 mx-auto flex w-full max-w-5xl flex-col items-center gap-5">
+        <${SetupProgress} step=${2} />
         <${motion.div}
           className="mood-logo-wrap mood-logo-floating"
           initial=${{ opacity: 0, scale: 0.72, y: 18 }}
@@ -3515,9 +3696,9 @@ function MoodCheckInScreen({
         >
           <div className="mood-heading mood-heading-centered">
             <div className="mood-pulse-brand-mark font-display" aria-hidden="true">V</div>
-            <p className="eyebrow">Setup 2 of 3 · Mood pulse</p>
+            <p className="eyebrow">Setup 2 of 4 · Mood pulse</p>
             <h2 className="font-display">How are you doing today?</h2>
-            <p>Optional, quick, and only used to make today’s plan feel realistic.</p>
+            <p>Quick and optional. Mood helps VIRELI keep the schedule realistic.</p>
           </div>
 
           <div className="mood-grid mood-grid-centered">
@@ -3537,6 +3718,187 @@ function MoodCheckInScreen({
                 </button>
               `,
             )}
+          </div>
+          ${showNote
+            ? html`
+                <label className="field-stack mood-note-field">
+                  <span>Optional note</span>
+                  <textarea
+                    className="bad-flow-input"
+                    value=${moodNote}
+                    onInput=${(event) => onMoodNoteChange(event.target.value)}
+                    rows="3"
+                    placeholder="Anything VIRELI should keep in mind?"
+                  ></textarea>
+                </label>
+              `
+            : null}
+          <div className="mood-control-row mood-control-row-centered">
+            <button type="button" className="secondary-button" onClick=${onMoodSkip}>Skip</button>
+            <button type="button" className="primary-button" onClick=${onMoodContinue}>
+              Continue
+            </button>
+          </div>
+        </${motion.div}>
+      </div>
+    </${motion.section}>
+  `;
+}
+
+function SetupScheduleBasicsScreen({
+  routineDraft,
+  onRoutineChange,
+  onRoutineWorkloadSelect,
+  onContinue,
+}) {
+  const canContinue = Boolean(routineDraft.wakeTime && routineDraft.bedTime && routineDraft.preferredDailyWorkloadMinutes);
+  const previewRoutine = normalizeRoutineEntry(routineDraft);
+  const schedule = getTodayScheduleBlocks({ routine: previewRoutine, homeworkItems: [], calendarTasks: [] });
+
+  return html`
+    <${motion.section}
+      className="mood-screen min-h-screen relative flex items-center justify-center overflow-hidden px-5 py-8 sm:px-8"
+      initial=${{ opacity: 0 }}
+      animate=${{ opacity: 1 }}
+      exit=${{ opacity: 0, scale: 0.985 }}
+      transition=${{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <${GraphBackdrop} />
+      <div className="relative z-10 mx-auto flex w-full max-w-5xl flex-col items-center gap-5">
+        <${SetupProgress} step=${3} />
+        <${motion.div}
+          className="mood-panel routine-panel"
+          initial=${{ opacity: 0, y: 28 }}
+          animate=${{ opacity: 1, y: 0 }}
+          transition=${{ duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <div className="mood-heading">
+            <p className="eyebrow">Setup 3 of 4 · Schedule Basics</p>
+            <h2 className="font-display">When is your day usable?</h2>
+            <p>Wake time, sleep time, and workload limits keep VIRELI from overscheduling you.</p>
+          </div>
+          <div className="routine-form">
+            <div className="routine-time-grid">
+              <label className="field-stack">
+                <span>Wake time</span>
+                <input className="planning-input" type="time" value=${routineDraft.wakeTime} onInput=${(event) => onRoutineChange("wakeTime", event.target.value)} />
+              </label>
+              <label className="field-stack">
+                <span>Sleep time</span>
+                <input className="planning-input" type="time" value=${routineDraft.bedTime} onInput=${(event) => onRoutineChange("bedTime", event.target.value)} />
+              </label>
+            </div>
+            <div className="field-stack">
+              <span>Workload</span>
+              <div className="workload-choice-grid">
+                ${WORKLOAD_OPTIONS.map(
+                  (option) => html`
+                    <button
+                      key=${option.id}
+                      type="button"
+                      className=${cx("choice-chip workload-choice", routineDraft.preferredWorkloadLabel === option.label && "is-selected")}
+                      onClick=${() => onRoutineWorkloadSelect(option)}
+                    >
+                      ${option.label}
+                    </button>
+                  `,
+                )}
+              </div>
+              ${routineDraft.preferredWorkloadLabel === "Custom"
+                ? html`
+                    <input
+                      className="planning-input"
+                      type="number"
+                      min="15"
+                      step="15"
+                      inputMode="numeric"
+                      value=${routineDraft.preferredDailyWorkloadMinutes}
+                      onInput=${(event) => onRoutineChange("preferredDailyWorkloadMinutes", event.target.value)}
+                      placeholder="Minutes"
+                    />
+                  `
+                : null}
+            </div>
+            <div className="setup-timeline-preview">
+              <span>${formatTimeLabel(minutesToTimeValue(schedule.wakeMinutes))}</span>
+              <div className="day-chart-track">
+                ${getChartSegments(schedule).map(
+                  (segment) => html`<i key=${segment.id} className=${cx("day-chart-segment", `is-${segment.source}`)} style=${{ width: `${segment.width}%` }}></i>`,
+                )}
+              </div>
+              <span>${formatTimeLabel(minutesToTimeValue(schedule.bedMinutes))}</span>
+            </div>
+          </div>
+          <${AnimatePresence}>
+            ${canContinue
+              ? html`
+                  <${motion.div} className="mood-control-row" initial=${{ opacity: 0, y: 10 }} animate=${{ opacity: 1, y: 0 }} exit=${{ opacity: 0, y: 8 }}>
+                    <button type="button" className="primary-button" onClick=${onContinue}>Continue</button>
+                  </${motion.div}>
+                `
+              : null}
+          </${AnimatePresence}>
+        </${motion.div}>
+      </div>
+    </${motion.section}>
+  `;
+}
+
+function SetupRoutineBuilderScreen({
+  routineDraft,
+  onRoutineActivityChange,
+  onRoutineActivityAdd,
+  onRoutineActivityRemove,
+  onSaveRoutine,
+}) {
+  const dailyActivities = (routineDraft.dailyActivities || []).length
+    ? routineDraft.dailyActivities
+    : [{ id: "activity-setup-empty", name: "", durationMinutes: "", usualTime: "", days: "Weekdays", fixed: true }];
+
+  return html`
+    <${motion.section}
+      className="mood-screen min-h-screen relative flex items-center justify-center overflow-hidden px-5 py-8 sm:px-8"
+      initial=${{ opacity: 0 }}
+      animate=${{ opacity: 1 }}
+      exit=${{ opacity: 0, scale: 0.985 }}
+      transition=${{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <${GraphBackdrop} />
+      <div className="relative z-10 mx-auto flex w-full max-w-5xl flex-col items-center gap-5">
+        <${SetupProgress} step=${4} />
+        <${motion.div}
+          className="mood-panel routine-panel"
+          initial=${{ opacity: 0, y: 28 }}
+          animate=${{ opacity: 1, y: 0 }}
+          transition=${{ duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <div className="mood-heading">
+            <p className="eyebrow">Setup 4 of 4 · Your Routine</p>
+            <h2 className="font-display">Add what already exists.</h2>
+            <p>Start empty. Add only real commitments VIRELI should plan around.</p>
+          </div>
+          <div className="daily-activity-list routine-builder-list">
+            ${dailyActivities.map(
+              (activity, index) => html`
+                <div key=${activity.id || `routine-activity-${index}`} className="routine-activity-row routine-builder-row">
+                  <input className="planning-input" value=${activity.name} onInput=${(event) => onRoutineActivityChange(index, "name", event.target.value)} placeholder="School, practice, work..." />
+                  <input className="planning-input" type="number" min="0" inputMode="numeric" value=${activity.durationMinutes} onInput=${(event) => onRoutineActivityChange(index, "durationMinutes", event.target.value)} placeholder="Minutes" />
+                  <input className="planning-input" value=${activity.usualTime} onInput=${(event) => onRoutineActivityChange(index, "usualTime", event.target.value)} placeholder="Start time" />
+                  <select className="planning-input" value=${activity.days || "Weekdays"} onChange=${(event) => onRoutineActivityChange(index, "days", event.target.value)}>
+                    ${ROUTINE_DAY_OPTIONS.map((option) => html`<option key=${option} value=${option}>${option}</option>`)}
+                  </select>
+                  <select className="planning-input" value=${activity.fixed === false ? "Flexible" : "Fixed"} onChange=${(event) => onRoutineActivityChange(index, "fixed", event.target.value === "Fixed")}>
+                    <option value="Fixed">Fixed</option>
+                    <option value="Flexible">Flexible</option>
+                  </select>
+                  <button type="button" className="secondary-button" onClick=${() => onRoutineActivityRemove(index)} disabled=${dailyActivities.length <= 1}>Remove</button>
+                </div>
+              `,
+            )}
+          </div>
+          <div className="card-footer-row">
+            <button type="button" className="secondary-button" onClick=${onRoutineActivityAdd} disabled=${dailyActivities.length >= 8}>Add routine</button>
+            <button type="button" className="primary-button" onClick=${onSaveRoutine}>Go to Home</button>
           </div>
         </${motion.div}>
       </div>
@@ -3616,14 +3978,14 @@ function AccountScreen({
             </div>
             <p className="google-auth-brand font-display">VIRELI</p>
             <h2 className="font-display">
-              ${emailAuthStep === "code" ? "Check your email" : "Sign in to VIRELI"}
+              ${emailAuthStep === "code" ? "Check your email" : "Welcome back"}
             </h2>
             ${emailAuthStep === "code"
               ? html`
                   <p>We sent a verification code to</p>
                   <p className="auth-email-display">${emailAuthEmail}</p>
                 `
-              : html`<p>Use your email to continue</p>`}
+              : html`<p>Sign in to continue to Vireli.</p>`}
           </div>
 
           ${emailAuthStep === "code"
@@ -4128,6 +4490,7 @@ function RoutineTab({
     .reduce((total, block) => total + block.endMinutes - block.startMinutes, 0);
   const workloadLabel = getDayWorkloadLabel({ routine, homeworkItems, calendarTasks });
   const canSave = Boolean(routineDraft.wakeTime && routineDraft.bedTime && routineDraft.preferredDailyWorkloadMinutes);
+  const routineItems = (routine.dailyActivities || []).filter((item) => item.name);
 
   return html`
     <${motion.section}
@@ -4141,12 +4504,41 @@ function RoutineTab({
       <div className="tab-heading">
         <div>
           <p className="eyebrow">Your Routine</p>
-          <h1 className="font-display">Where your time goes.</h1>
-          <p className="tab-heading-lead">VIRELI uses fixed routine blocks before it schedules work.</p>
+          <h1 className="font-display">Organize Tasks</h1>
+          <p className="tab-heading-lead">VIRELI reviews your recurring commitments before it moves anything.</p>
         </div>
       </div>
 
       <div className="routine-dashboard-grid">
+        <article className="feature-card routine-card-list-card">
+          <p className="eyebrow">Recurring routine</p>
+          <h3 className="font-display section-title-lg">Your fixed and flexible blocks</h3>
+          ${routineItems.length
+            ? html`
+                <div className="routine-card-list">
+                  ${routineItems.map(
+                    (activity) => html`
+                      <details key=${activity.id} className=${cx("routine-mini-card", activity.fixed === false && "is-flexible")}>
+                        <summary>
+                          <strong>${activity.name}</strong>
+                          <span>${[activity.usualTime ? formatTimeLabel(activity.usualTime) : "", activity.durationMinutes ? `${activity.durationMinutes} min` : "", activity.fixed === false ? "Flexible" : "Fixed"].filter(Boolean).join(" · ")}</span>
+                        </summary>
+                        <div>
+                          <button type="button" className="secondary-button" onClick=${() => onRoutineActivityChange((routineDraft.dailyActivities || []).findIndex((item) => item.id === activity.id), "active", false)}>
+                            Pause
+                          </button>
+                          <button type="button" className="secondary-button" onClick=${() => onRoutineActivityRemove((routineDraft.dailyActivities || []).findIndex((item) => item.id === activity.id))}>
+                            Remove
+                          </button>
+                        </div>
+                      </details>
+                    `,
+                  )}
+                </div>
+              `
+            : html`<div className="soft-note"><p>No routine blocks yet. Add only real commitments.</p></div>`}
+        </article>
+
         <article className="feature-card routine-summary-card">
           <p className="eyebrow">${workloadLabel} day</p>
           <h3 className="font-display">${formatDurationFromMinutes(schedule.freeMinutes)} free today</h3>
@@ -4166,7 +4558,8 @@ function RoutineTab({
         </article>
 
         <article className="feature-card routine-editor-card">
-          <h3 className="font-display">Edit routine</h3>
+          <h3 className="font-display">Vireli’s Suggested Day</h3>
+          <p>Review the day VIRELI can build from your routine before applying schedule changes.</p>
           <div className="routine-form">
             <div className="routine-time-grid">
               <label className="field-stack">
@@ -4225,7 +4618,9 @@ function RoutineTab({
             </div>
             <div className="card-footer-row">
               <button type="button" className="secondary-button" onClick=${onRoutineActivityAdd} disabled=${dailyActivities.length >= 8}>Add activity</button>
-              <button type="button" className="primary-button" onClick=${onSaveRoutine} disabled=${!canSave}>Save routine</button>
+              <button type="button" className="secondary-button" onClick=${onSaveRoutine} disabled=${!canSave}>Adjust</button>
+              <button type="button" className="secondary-button" onClick=${onSaveRoutine} disabled=${!canSave}>Organize Again</button>
+              <button type="button" className="primary-button" onClick=${onSaveRoutine} disabled=${!canSave}>Accept</button>
             </div>
           </div>
         </article>
@@ -4419,12 +4814,15 @@ function DailyLogPanel({
 }
 
 function HomeTab({
+  profile,
   routine,
   homeworkItems,
   calendarTasks,
   savedClasses,
   moodSelection,
+  chatDraft,
   onTabChange,
+  onChatDraftChange,
   onHomeworkCompleteToggle,
   onHomeworkReschedule,
   onHomeworkDelete,
@@ -4444,6 +4842,14 @@ function HomeTab({
   const chartSegments = getChartSegments(schedule);
   const nextItem = recommendation.item;
   const nextWindow = recommendation.freeWindows[0];
+  const upNextItems = homeworkItems
+    .filter((item) => !item.completed && (!nextItem || item.id !== nextItem.id))
+    .sort((a, b) => `${getItemCalendarDate(a) || "9999-12-31"} ${a.scheduledTime || ""}`.localeCompare(`${getItemCalendarDate(b) || "9999-12-31"} ${b.scheduledTime || ""}`))
+    .slice(0, 3);
+  const todayItems = getChronologicalDayItems({ routine, homeworkItems, calendarTasks, savedClasses }).slice(0, 10);
+  const tomorrowPreview = getTomorrowPreview({ homeworkItems, calendarTasks, routine });
+  const starterTasks = getStarterTasks(profile.primaryUse);
+  const isNewerUser = homeworkItems.length + calendarTasks.length + (routine.dailyActivities || []).filter((item) => item.name).length < 3;
 
   return html`
     <${motion.section}
@@ -4456,7 +4862,7 @@ function HomeTab({
     >
       <div className="tab-heading home-heading">
         <div>
-          <p className="eyebrow">Home</p>
+          <p className="eyebrow">${getTimeGreeting()}, ${getFirstName(profile)}</p>
           <h1 className="font-display">What should I do right now?</h1>
           <p className="tab-heading-lead">
             VIRELI looks at assignments, routines, and open time to choose the next useful step.
@@ -4465,9 +4871,27 @@ function HomeTab({
         <span className="date-chip free-hours-chip">${freeWindows[0] ? `${freeWindows[0].label} open` : "No open window right now"}</span>
       </div>
 
+      <form
+        className="smart-add-bar"
+        onSubmit=${(event) => {
+          event.preventDefault();
+          onTabChange("ask");
+        }}
+      >
+        <input
+          value=${chatDraft}
+          onInput=${(event) => onChatDraftChange(event.target.value)}
+          placeholder="Tell Vireli what you need to do..."
+          aria-label="Tell VIRELI what you need to do"
+        />
+        <button type="submit" className="primary-button" disabled=${!chatDraft.trim()}>
+          Ask
+        </button>
+      </form>
+
       <div className="home-grid planner-dashboard-grid">
         <article className="feature-card next-task-card">
-          <p className="eyebrow">Next task</p>
+          <p className="eyebrow">Right Now</p>
           ${nextItem
             ? html`
                 <div className="next-task-main">
@@ -4484,7 +4908,7 @@ function HomeTab({
                 </div>
                 <div className="card-footer-row next-task-actions">
                   <button type="button" className="primary-button" onClick=${() => onTabChange("calendar")}>Start</button>
-                  <button type="button" className="secondary-button" onClick=${() => onHomeworkCompleteToggle(nextItem.id)}>Complete</button>
+                  <button type="button" className="secondary-button" onClick=${() => onHomeworkCompleteToggle(nextItem.id)}>Done</button>
                   <button
                     type="button"
                     className="secondary-button"
@@ -4499,7 +4923,7 @@ function HomeTab({
                 <div className="empty-action-state">
                   <h2 className="font-display">No assignments yet.</h2>
                   <p>Add one assignment and VIRELI will find a realistic time to work on it.</p>
-                  <button type="button" className="primary-button" onClick=${() => onTabChange("calendar")}>Add task</button>
+                  <button type="button" className="primary-button" onClick=${() => onTabChange("assignments")}>Add assignment</button>
                 </div>
               `}
         </article>
@@ -4512,21 +4936,21 @@ function HomeTab({
         </article>
 
         <article className="feature-card deadline-card">
-          <p className="eyebrow">Upcoming deadlines</p>
-          ${deadlines.length
+          <p className="eyebrow">Up Next</p>
+          ${upNextItems.length
             ? html`
                 <div className="compact-list">
-                  ${deadlines.map(
+                  ${upNextItems.map(
                     (item) => html`
-                      <div key=${`deadline-${item.id}`} className="compact-list-row">
+                      <div key=${`up-next-${item.id}`} className="compact-list-row">
                         <strong>${item.title}</strong>
-                        <span>${formatShortDate(item.dueDate)} · ${getAssignmentDuration(item)} min</span>
+                        <span>${getPlanSummaryMeta(item)} · ${getAssignmentDuration(item)} min</span>
                       </div>
                     `,
                   )}
                 </div>
               `
-            : html`<p>No due dates saved yet. Add due dates so VIRELI can prioritize smarter.</p>`}
+            : html`<p>No queued work after the right-now task.</p>`}
           ${warnings.length
             ? html`
                 <div className="warning-list">
@@ -4570,7 +4994,7 @@ function HomeTab({
               ${formatTimeLabel(minutesToTimeValue(schedule.wakeMinutes))} - ${formatTimeLabel(minutesToTimeValue(schedule.bedMinutes))}
             </span>
           </div>
-          <h3 className="font-display section-title-lg">Available time</h3>
+          <h3 className="font-display section-title-lg">Available Time</h3>
           <div className="day-chart" aria-label="Free and busy chart for today">
             <div className="day-chart-track">
               ${chartSegments.map(
@@ -4601,27 +5025,93 @@ function HomeTab({
                 )
               : html`<p>No open windows left today.</p>`}
           </div>
+        </article>
+
+        <article className="feature-card timeline-card today-schedule-card">
+          <p className="eyebrow">Today</p>
+          <h3 className="font-display section-title-lg">Remaining schedule</h3>
           <div className="routine-timeline">
-            ${schedule.timelineBlocks.map(
+            ${todayItems.length
+              ? todayItems.map(
               (block) => html`
                 <div
                   key=${block.id}
                   className=${cx("timeline-block", `is-${block.source}`)}
                 >
                   <div className="timeline-time">
-                    <strong>${formatTimeLabel(minutesToTimeValue(block.startMinutes))}</strong>
-                    <span>${formatTimeLabel(minutesToTimeValue(block.endMinutes))}</span>
+                    <strong>${block.timeLabel.split(" - ")[0]}</strong>
+                    <span>${block.timeLabel.split(" - ")[1] || ""}</span>
                   </div>
                   <div className="timeline-content">
                     <span className="timeline-source">${block.source === "free" ? "Free" : block.source}</span>
                     <p>${block.title}</p>
-                    <small>${formatDurationFromMinutes(block.endMinutes - block.startMinutes)}</small>
+                    <small>${block.durationLabel}</small>
                   </div>
                 </div>
               `,
-            )}
+            )
+              : html`<p>No schedule blocks yet.</p>`}
           </div>
         </article>
+
+        <article className="feature-card deadline-card">
+          <p className="eyebrow">Upcoming Deadlines</p>
+          ${deadlines.length
+            ? html`
+                <div className="compact-list">
+                  ${deadlines.map(
+                    (item) => html`
+                      <div key=${`deadline-${item.id}`} className="compact-list-row">
+                        <strong>${item.title}</strong>
+                        <span>${formatShortDate(item.dueDate)} · ${getAssignmentDuration(item)} min</span>
+                      </div>
+                    `,
+                  )}
+                </div>
+              `
+            : html`<p>No due dates saved yet.</p>`}
+        </article>
+
+        <article className="feature-card deadline-card">
+          <p className="eyebrow">Tomorrow Preview</p>
+          ${tomorrowPreview.items.length || tomorrowPreview.freeWindows.length
+            ? html`
+                <div className="compact-list">
+                  ${tomorrowPreview.items.map(
+                    (item) => html`
+                      <div key=${`tomorrow-${item.id}`} className="compact-list-row">
+                        <strong>${item.title}</strong>
+                        <span>${getPlanSummaryMeta(item)}</span>
+                      </div>
+                    `,
+                  )}
+                  ${tomorrowPreview.freeWindows.map(
+                    (windowBlock) => html`
+                      <div key=${`tomorrow-window-${windowBlock.id}`} className="compact-list-row">
+                        <strong>${windowBlock.label}</strong>
+                        <span>${windowBlock.durationLabel} available</span>
+                      </div>
+                    `,
+                  )}
+                </div>
+              `
+            : html`<p>Tomorrow is open so far.</p>`}
+        </article>
+
+        ${isNewerUser
+          ? html`
+              <article className="feature-card starter-card">
+                <p className="eyebrow">Start with 3 things</p>
+                <h3 className="font-display section-title-lg">Build your first useful plan.</h3>
+                <div className="starter-task-row">
+                  ${starterTasks.map((task) => html`<span key=${task} className="step-chip">${task}</span>`)}
+                </div>
+                <button type="button" className="secondary-button" onClick=${() => onTabChange("assignments")}>
+                  Add first item
+                </button>
+              </article>
+            `
+          : null}
       </div>
     </${motion.section}>
   `;
@@ -4900,6 +5390,7 @@ function DailyLogTab({
   timeMode,
   dailyLogDraft,
   dailyLogSubmitted,
+  dailyLogs,
   thoughts,
   thoughtDraft,
   onDailyLogChange,
@@ -4934,40 +5425,28 @@ function DailyLogTab({
           <p className="eyebrow">Reflection</p>
           <h1 className="font-display">Daily Log</h1>
           <p className="tab-heading-lead">
-            A short check-in for the end of the day.
+            What’s on your mind?
           </p>
         </div>
       </div>
 
       <div className="daily-grid daily-log-grid">
-        <${DailyLogPanel}
-          timeMode=${timeMode}
-          dailyLogDraft=${dailyLogDraft}
-          dailyLogSubmitted=${dailyLogSubmitted}
-          onDailyLogChange=${onDailyLogChange}
-          onDailyActivityChange=${onDailyActivityChange}
-          onDailyActivityAdd=${onDailyActivityAdd}
-          onDailyActivityRemove=${onDailyActivityRemove}
-          onDailyActivitiesLockToggle=${onDailyActivitiesLockToggle}
-          onDailyLogSubmit=${onDailyLogSubmit}
-        />
-
         <article className="feature-card thoughts-card">
           <div className="card-topline card-topline-simple">
-            <span className="micro-badge">Thoughts</span>
+            <span className="micro-badge">Today</span>
           </div>
-          <h3 className="font-display section-title-lg">Save what is on your mind.</h3>
+          <h3 className="font-display section-title-lg">What’s on your mind?</h3>
           <p>Thoughts do not become tasks until you choose what to do with them.</p>
 
           <form className="thought-form" onSubmit=${onThoughtAdd}>
             <label className="field-stack">
               <span>Quick thought</span>
               <textarea
-                className="planning-input compact-textarea"
+                className="planning-input daily-writing-area"
                 value=${thoughtDraft}
                 onInput=${(event) => onThoughtDraftChange(event.target.value)}
                 placeholder="Save anything that’s on your mind. You can organize it later."
-                rows="3"
+                rows="8"
               ></textarea>
             </label>
             <div className="card-footer-row">
@@ -5031,6 +5510,45 @@ function DailyLogTab({
               `
             : null}
         </article>
+
+        <article className="feature-card daily-log-card">
+          <div className="card-topline card-topline-simple">
+            <span className="micro-badge">Previous entries</span>
+          </div>
+          <h3 className="font-display section-title-lg">Search and review</h3>
+          <p>Saved logs stay available here while quick thoughts stay easy to organize.</p>
+          <div className="history-list">
+            ${dailyLogs.length
+              ? dailyLogs.slice(0, 6).map(
+                  (log) => html`
+                    <details key=${log.id} className="history-item">
+                      <summary>
+                        <span>${log.rating || "Daily Log"}</span>
+                        <small>${formatDateTime(log.updatedAt)}</small>
+                      </summary>
+                      <div className="history-messages">
+                        <p>${(log.activities || []).filter(Boolean).join(", ") || log.highlight || "No entry text saved."}</p>
+                      </div>
+                    </details>
+                  `,
+                )
+              : html`<div className="soft-note"><p>No previous Daily Logs yet.</p></div>`}
+          </div>
+          <details className="thought-archive">
+            <summary>Structured check-in</summary>
+            <${DailyLogPanel}
+              timeMode=${timeMode}
+              dailyLogDraft=${dailyLogDraft}
+              dailyLogSubmitted=${dailyLogSubmitted}
+              onDailyLogChange=${onDailyLogChange}
+              onDailyActivityChange=${onDailyActivityChange}
+              onDailyActivityAdd=${onDailyActivityAdd}
+              onDailyActivityRemove=${onDailyActivityRemove}
+              onDailyActivitiesLockToggle=${onDailyActivitiesLockToggle}
+              onDailyLogSubmit=${onDailyLogSubmit}
+            />
+          </details>
+        </article>
       </div>
     </${motion.section}>
   `;
@@ -5042,6 +5560,7 @@ function CalendarTab({
   calendarTaskDraft,
   editingCalendarTaskId,
   calendarMonth,
+  calendarView,
   selectedDate,
   savedClasses,
   routine,
@@ -5050,6 +5569,7 @@ function CalendarTab({
   onCalendarTaskEdit,
   onCalendarTaskCancelEdit,
   onCalendarMonthChange,
+  onCalendarViewChange,
   onSelectedDateChange,
   onHomeworkCompleteToggle,
   onHomeworkReschedule,
@@ -5060,6 +5580,7 @@ function CalendarTab({
   const today = getDateInputValue();
   const monthAnchor = calendarMonth || new Date();
   const monthDates = getMonthGridDates(monthAnchor);
+  const weekDates = getWeekDates(new Date(`${selectedDate || today}T12:00:00`));
   const calendarItems = [
     ...homeworkItems.map((item) => ({
       ...item,
@@ -5110,6 +5631,18 @@ function CalendarTab({
           </p>
         </div>
         <div className="calendar-month-controls">
+          ${["day", "week", "month"].map(
+            (view) => html`
+              <button
+                key=${view}
+                type="button"
+                className=${cx("secondary-button", calendarView === view && "is-active")}
+                onClick=${() => onCalendarViewChange(view)}
+              >
+                ${view.charAt(0).toUpperCase()}${view.slice(1)}
+              </button>
+            `,
+          )}
           <button type="button" className="secondary-button" onClick=${() => onCalendarMonthChange(new Date())}>
             Today
           </button>
@@ -5392,48 +5925,88 @@ function CalendarTab({
         </article>
 
         <article className="feature-card feature-card-quote-wide month-calendar-card">
-          <div className="month-calendar-grid">
-            ${WEEKDAY_LABELS.map(
-              (day) => html`<div key=${day} className="month-weekday">${day}</div>`,
-            )}
-            ${monthDates.map((dateInfo) => {
-              const itemsForDay = visibleCalendarItems.filter((item) => item.calendarDate === dateInfo.value);
-              return html`
-                <button
-                  type="button"
-                  key=${dateInfo.value}
-                  className=${cx(
-                    "month-date-cell",
-                    !dateInfo.isCurrentMonth && "is-muted",
-                    dateInfo.isToday && "is-today",
-                    dateInfo.value === selectedDateValue && "is-selected",
-                    dateInfo.value < today && "is-past",
-                  )}
-                  onClick=${() => onSelectedDateChange(dateInfo.value)}
-                  aria-label=${`Select ${formatShortDate(dateInfo.value)}`}
-                >
-                  <div className="month-date-head">
-                    <span>${dateInfo.day}</span>
-                  </div>
-                  <div className="month-date-items">
-                    ${itemsForDay.slice(0, 3).map(
+          ${calendarView === "day"
+            ? html`
+                <div className="calendar-day-focus">
+                  <h3 className="font-display">${formatShortDate(selectedDateValue)}</h3>
+                  <div className="selected-day-list">
+                    ${chronologicalDayItems.map(
                       (item) => html`
-                        <span
-                          key=${item.calendarId}
-                          className=${cx("month-event-chip", item.completed && "is-complete")}
-                        >
-                          ${item.subject}: ${item.title}
-                        </span>
+                        <div key=${`day-${item.id}`} className=${cx("selected-day-item", `is-${item.source}`)}>
+                          <div>
+                            <strong>${item.title}</strong>
+                            <span>${item.timeLabel} · ${item.durationLabel}</span>
+                          </div>
+                        </div>
                       `,
                     )}
-                    ${itemsForDay.length > 3
-                      ? html`<small className="month-more-count">+${itemsForDay.length - 3} more</small>`
-                      : null}
                   </div>
-                </button>
-              `;
-            })}
-          </div>
+                </div>
+              `
+            : calendarView === "week"
+              ? html`
+                  <div className="week-calendar-grid">
+                    ${weekDates.map((dateInfo) => {
+                      const itemsForDay = visibleCalendarItems.filter((item) => item.calendarDate === dateInfo.value);
+                      return html`
+                        <button
+                          type="button"
+                          key=${`week-${dateInfo.value}`}
+                          className=${cx("week-date-cell", dateInfo.isToday && "is-today", dateInfo.value === selectedDateValue && "is-selected")}
+                          onClick=${() => onSelectedDateChange(dateInfo.value)}
+                        >
+                          <span>${dateInfo.label}</span>
+                          <strong>${dateInfo.day}</strong>
+                          ${itemsForDay.slice(0, 4).map((item) => html`<small key=${item.calendarId}>${item.title}</small>`)}
+                        </button>
+                      `;
+                    })}
+                  </div>
+                `
+              : html`
+                  <div className="month-calendar-grid">
+                    ${WEEKDAY_LABELS.map(
+                      (day) => html`<div key=${day} className="month-weekday">${day}</div>`,
+                    )}
+                    ${monthDates.map((dateInfo) => {
+                      const itemsForDay = visibleCalendarItems.filter((item) => item.calendarDate === dateInfo.value);
+                      return html`
+                        <button
+                          type="button"
+                          key=${dateInfo.value}
+                          className=${cx(
+                            "month-date-cell",
+                            !dateInfo.isCurrentMonth && "is-muted",
+                            dateInfo.isToday && "is-today",
+                            dateInfo.value === selectedDateValue && "is-selected",
+                            dateInfo.value < today && "is-past",
+                          )}
+                          onClick=${() => onSelectedDateChange(dateInfo.value)}
+                          aria-label=${`Select ${formatShortDate(dateInfo.value)}`}
+                        >
+                          <div className="month-date-head">
+                            <span>${dateInfo.day}</span>
+                          </div>
+                          <div className="month-date-items">
+                            ${itemsForDay.slice(0, 3).map(
+                              (item) => html`
+                                <span
+                                  key=${item.calendarId}
+                                  className=${cx("month-event-chip", item.completed && "is-complete")}
+                                >
+                                  ${item.subject}: ${item.title}
+                                </span>
+                              `,
+                            )}
+                            ${itemsForDay.length > 3
+                              ? html`<small className="month-more-count">+${itemsForDay.length - 3} more</small>`
+                              : null}
+                          </div>
+                        </button>
+                      `;
+                    })}
+                  </div>
+                `}
         </article>
       </div>
     </${motion.section}>
@@ -5925,6 +6498,7 @@ function DashboardShell({
   calendarTaskDraft,
   editingCalendarTaskId,
   calendarMonth,
+  calendarView,
   selectedCalendarDate,
   calendarPreferences,
   dailyLogs,
@@ -5944,6 +6518,7 @@ function DashboardShell({
   onCalendarTaskEdit,
   onCalendarTaskCancelEdit,
   onCalendarMonthChange,
+  onCalendarViewChange,
   onSelectedCalendarDateChange,
   onCalendarTaskToggle,
   onCalendarTaskDelete,
@@ -5995,15 +6570,33 @@ function DashboardShell({
   if (activeTab === "home") {
     activeView = html`
       <${HomeTab}
+        profile=${profile}
         routine=${routine}
         homeworkItems=${homeworkItems}
         calendarTasks=${calendarTasks}
         savedClasses=${savedClasses}
         moodSelection=${moodSelection}
+        chatDraft=${chatDraft}
         onTabChange=${onTabChange}
+        onChatDraftChange=${onChatDraftChange}
         onHomeworkCompleteToggle=${onHomeworkCompleteToggle}
         onHomeworkReschedule=${onHomeworkReschedule}
         onHomeworkDelete=${onHomeworkDelete}
+      />
+    `;
+  } else if (activeTab === "assignments") {
+    activeView = html`
+      <${PlanTodayTab}
+        todayLabel=${todayLabel}
+        timeMode=${timeMode}
+        savedClasses=${savedClasses}
+        homeworkItems=${homeworkItems}
+        homeworkDraft=${homeworkDraft}
+        onHomeworkDraftChange=${onHomeworkDraftChange}
+        onHomeworkSubmit=${onHomeworkSubmit}
+        onHomeworkCompleteToggle=${onHomeworkCompleteToggle}
+        onHomeworkDelete=${onHomeworkDelete}
+        onPlanNotificationDismiss=${onPlanNotificationDismiss}
       />
     `;
   } else if (activeTab === "calendar") {
@@ -6014,6 +6607,7 @@ function DashboardShell({
         calendarTaskDraft=${calendarTaskDraft}
         editingCalendarTaskId=${editingCalendarTaskId}
         calendarMonth=${calendarMonth}
+        calendarView=${calendarView}
         selectedDate=${selectedCalendarDate}
         savedClasses=${savedClasses}
         routine=${routine}
@@ -6022,6 +6616,7 @@ function DashboardShell({
         onCalendarTaskEdit=${onCalendarTaskEdit}
         onCalendarTaskCancelEdit=${onCalendarTaskCancelEdit}
         onCalendarMonthChange=${onCalendarMonthChange}
+        onCalendarViewChange=${onCalendarViewChange}
         onSelectedDateChange=${onSelectedCalendarDateChange}
         onHomeworkCompleteToggle=${onHomeworkCompleteToggle}
         onHomeworkReschedule=${onHomeworkReschedule}
@@ -6051,6 +6646,7 @@ function DashboardShell({
         timeMode=${timeMode}
         dailyLogDraft=${dailyLogDraft}
         dailyLogSubmitted=${dailyLogSubmitted}
+        dailyLogs=${dailyLogs}
         thoughts=${thoughts}
         thoughtDraft=${thoughtDraft}
         onDailyLogChange=${onDailyLogChange}
@@ -6131,6 +6727,20 @@ function DashboardShell({
           <div className="topbar-brand-mark" aria-label="VIRELI">
             <${VireliLogoMark} className="brand-mark" />
           </div>
+          <nav className="topbar-nav" aria-label="Primary navigation">
+            ${PRIMARY_NAV_ITEMS.map(
+              (item) => html`
+                <button
+                  key=${item.id}
+                  type="button"
+                  className=${cx("topbar-nav-button", activeTab === item.id && "is-active")}
+                  onClick=${() => onTabChange(item.id)}
+                >
+                  ${item.label}
+                </button>
+              `,
+            )}
+          </nav>
           <h1 className="topbar-page-name font-display">${pageLabel}</h1>
           <div className="topbar-actions">
             <details className="topbar-menu topbar-status-menu">
@@ -6191,7 +6801,7 @@ function DashboardShell({
             </div>
 
             <nav className="sidebar-nav" aria-label="Primary">
-              ${NAV_ITEMS.map(
+              ${PRIMARY_NAV_ITEMS.map(
                 (item) => html`
                   <button
                     key=${item.id}
@@ -6204,24 +6814,59 @@ function DashboardShell({
                 `,
               )}
             </nav>
+            <div className="sidebar-secondary-links">
+              <button type="button" className="secondary-button" onClick=${() => onTabChange("improve")}>
+                Improve
+              </button>
+              <button type="button" className="secondary-button" onClick=${() => onTabChange("settings")}>
+                Settings
+              </button>
+            </div>
           </aside>
 
           <main className="surface-panel content-panel">
             <${AnimatePresence} mode="wait">${activeView}</${AnimatePresence}>
           </main>
         </div>
+
+        <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
+          ${MOBILE_NAV_ITEMS.map(
+            (item) => html`
+              <button
+                key=${item.id}
+                type="button"
+                className=${cx("mobile-nav-button", (item.id === activeTab || (item.id === "more" && ["routine", "daily-log", "settings", "improve"].includes(activeTab))) && "is-active")}
+                onClick=${() => onTabChange(item.id === "more" ? "settings" : item.id)}
+              >
+                ${item.label}
+              </button>
+            `,
+          )}
+        </nav>
       </div>
     </${motion.section}>
   `;
 }
 
 function App() {
-  const [introComplete, setIntroComplete] = useState(false);
+  const [introComplete, setIntroComplete] = useState(() => {
+    const savedProfile = loadProfile();
+    return Boolean((savedProfile.connected || savedProfile.guest) && savedProfile.setupComplete);
+  });
   const [moodSelection, setMoodSelection] = useState("");
   const [moodNote, setMoodNote] = useState("");
-  const [moodCheckInComplete, setMoodCheckInComplete] = useState(false);
-  const [profileStepComplete, setProfileStepComplete] = useState(false);
-  const [routineStepComplete, setRoutineStepComplete] = useState(false);
+  const [moodCheckInComplete, setMoodCheckInComplete] = useState(() => {
+    const savedProfile = loadProfile();
+    return Boolean(savedProfile.setupComplete);
+  });
+  const [profileStepComplete, setProfileStepComplete] = useState(() => {
+    const savedProfile = loadProfile();
+    return Boolean((savedProfile.connected || savedProfile.guest) && savedProfile.setupComplete);
+  });
+  const [routineStepComplete, setRoutineStepComplete] = useState(() => {
+    const savedProfile = loadProfile();
+    return Boolean(savedProfile.setupComplete);
+  });
   const [activeTab, setActiveTab] = useState("home");
   const [feedbackDraft, setFeedbackDraft] = useState(EMPTY_FEEDBACK_DRAFT);
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
@@ -6258,6 +6903,7 @@ function App() {
   const [calendarTaskDraft, setCalendarTaskDraft] = useState(EMPTY_CALENDAR_TASK_DRAFT);
   const [editingCalendarTaskId, setEditingCalendarTaskId] = useState("");
   const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const [calendarView, setCalendarView] = useState("week");
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(getDateInputValue);
   const [calendarPreferences, setCalendarPreferences] = useState(loadCalendarPreferences);
   const [dailyLogDraft, setDailyLogDraft] = useState(loadDailyLog);
@@ -6277,7 +6923,8 @@ function App() {
   const themeName = getMoodTheme(moodSelection);
   const recentAskHistory = useMemo(() => getRecentAskHistory(askHistory), [askHistory]);
   const archivedAskHistory = useMemo(() => getArchivedAskHistory(askHistory), [askHistory]);
-  const dashboardReady = profileStepComplete && routineStepComplete;
+  const currentSetupStep = Math.max(1, Math.min(4, Number(profile.setupStep || 1)));
+  const dashboardReady = profileStepComplete && profile.setupComplete;
 
   function persistAskConversation(nextMessages = messages) {
     saveAskHistory([]);
@@ -6301,17 +6948,7 @@ function App() {
     setUndoToast(null);
   }
 
-  useEffect(() => {
-    if (introComplete) {
-      return undefined;
-    }
-
-    const timerId = window.setTimeout(() => {
-      setIntroComplete(true);
-    }, INTRO_SCREEN_DURATION_MS);
-
-    return () => window.clearTimeout(timerId);
-  }, [introComplete]);
+  useEffect(() => undefined, [introComplete]);
 
   useEffect(() => {
     document.body.dataset.theme = themeName;
@@ -6488,9 +7125,63 @@ function App() {
 
   function handleMoodSelect(choice) {
     setMoodSelection(choice);
-    setMoodCheckInComplete(true);
     askSessionIdRef.current = makeId("ask-session");
     setMessages(buildInitialMessages(choice));
+  }
+
+  function handleOpeningGetStarted() {
+    setIntroComplete(true);
+  }
+
+  function handleOpeningSignIn() {
+    setIntroComplete(true);
+  }
+
+  function advanceSetupStep(nextStep, changes = {}) {
+    const now = new Date().toISOString();
+    setProfile((currentProfile) => {
+      const nextProfile = {
+        ...currentProfile,
+        ...changes,
+        setupStep: nextStep,
+        timezone: currentProfile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+        updatedAt: now,
+      };
+      setProfileDraft(nextProfile);
+      return nextProfile;
+    });
+  }
+
+  function handleSetupAboutContinue() {
+    advanceSetupStep(2, {
+      name: profileDraft.name.trim() || profile.name,
+      primaryUse: profileDraft.primaryUse || profile.primaryUse,
+    });
+  }
+
+  function handleMoodContinue() {
+    setMoodCheckInComplete(true);
+    advanceSetupStep(3, {
+      moodSelection: moodSelection || "skipped",
+      moodNote: moodNote.trim(),
+    });
+  }
+
+  function handleMoodSkip() {
+    setMoodSelection("");
+    setMoodNote("");
+    setMoodCheckInComplete(true);
+    advanceSetupStep(3, {
+      moodSelection: "skipped",
+      moodNote: "",
+    });
+  }
+
+  function handleScheduleBasicsContinue() {
+    const nextRoutine = saveRoutine(routineDraft);
+    setRoutine(nextRoutine);
+    setRoutineDraft(nextRoutine);
+    advanceSetupStep(4);
   }
 
   function handleProfileDraftChange(field, value) {
@@ -6515,6 +7206,14 @@ function App() {
       authMode,
       classSetupSkipped: profile.classSetupSkipped,
       routineSetupSkipped: profile.routineSetupSkipped,
+      primaryUse: profile.primaryUse,
+      setupComplete: Boolean(profile.setupComplete),
+      setupStep: profile.setupComplete ? 4 : Math.max(1, Number(profile.setupStep || 1)),
+      timezone: profile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+      schedulingPreferences: {
+        ...EMPTY_PROFILE.schedulingPreferences,
+        ...(profile.schedulingPreferences || {}),
+      },
       createdAt: profile.createdAt || user.createdAt || now,
       updatedAt: now,
     };
@@ -6545,6 +7244,14 @@ function App() {
       authMode: `local-${authMode}`,
       classSetupSkipped: profile.classSetupSkipped,
       routineSetupSkipped: profile.routineSetupSkipped,
+      primaryUse: profile.primaryUse,
+      setupComplete: Boolean(profile.setupComplete),
+      setupStep: profile.setupComplete ? 4 : Math.max(1, Number(profile.setupStep || 1)),
+      timezone: profile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+      schedulingPreferences: {
+        ...EMPTY_PROFILE.schedulingPreferences,
+        ...(profile.schedulingPreferences || {}),
+      },
       createdAt: profile.createdAt || now,
       updatedAt: now,
     };
@@ -6776,6 +7483,14 @@ function App() {
       authMode: "guest",
       classSetupSkipped: profile.classSetupSkipped,
       routineSetupSkipped: profile.routineSetupSkipped,
+      primaryUse: profile.primaryUse,
+      setupComplete: Boolean(profile.setupComplete),
+      setupStep: profile.setupComplete ? 4 : Math.max(1, Number(profile.setupStep || 1)),
+      timezone: profile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+      schedulingPreferences: {
+        ...EMPTY_PROFILE.schedulingPreferences,
+        ...(profile.schedulingPreferences || {}),
+      },
       createdAt: profile.createdAt || now,
       updatedAt: now,
     };
@@ -6832,6 +7547,9 @@ function App() {
         name: "",
         durationMinutes: "",
         usualTime: "",
+        days: "Weekdays",
+        fixed: true,
+        active: true,
       };
       dailyActivities[index] = {
         ...currentActivity,
@@ -6851,6 +7569,9 @@ function App() {
           name: "",
           durationMinutes: "",
           usualTime: "",
+          days: "Weekdays",
+          fixed: true,
+          active: true,
         },
       ].slice(0, 8),
     }));
@@ -6858,10 +7579,10 @@ function App() {
 
   function handleRoutineActivityRemove(index) {
     setRoutineDraft((currentDraft) => {
-      const dailyActivities = (currentDraft.dailyActivities || [""]).filter((_, itemIndex) => itemIndex !== index);
+      const dailyActivities = (currentDraft.dailyActivities || []).filter((_, itemIndex) => itemIndex !== index);
       return {
         ...currentDraft,
-        dailyActivities: dailyActivities.length ? dailyActivities : [""],
+        dailyActivities,
       };
     });
   }
@@ -6875,6 +7596,8 @@ function App() {
     setProfile((currentProfile) => ({
       ...currentProfile,
       routineSetupSkipped: false,
+      setupComplete: true,
+      setupStep: 4,
       updatedAt: new Date().toISOString(),
     }));
   }
@@ -7365,6 +8088,21 @@ function App() {
       };
     }
 
+    const duplicateTask = calendarTasks.find(
+      (task) =>
+        !task.completed &&
+        task.title.toLowerCase() === title.toLowerCase() &&
+        task.scheduledDate === scheduledDate &&
+        (task.scheduledTime || "") === (suggestedTime || ""),
+    );
+
+    if (duplicateTask) {
+      return {
+        needsDetail: true,
+        reply: `${duplicateTask.title} is already on your calendar for ${formatShortDate(duplicateTask.scheduledDate)}${duplicateTask.scheduledTime ? ` at ${formatTimeLabel(duplicateTask.scheduledTime)}` : ""}.`,
+      };
+    }
+
     return {
       action: "add",
       task: {
@@ -7732,6 +8470,9 @@ function App() {
         id: makeId("feedback"),
         area: feedbackDraft.area,
         text: feedbackDraft.text.trim(),
+        page: activeTab,
+        appVersion: APP_VERSION,
+        feature: feedbackDraft.area,
         createdAt: new Date().toISOString(),
       },
       ...loadFeedbackEntries(),
@@ -7959,7 +8700,13 @@ function App() {
 
       <${AnimatePresence} mode="wait">
         ${!introComplete
-          ? html`<${IntroScreen} key="intro" />`
+          ? html`
+              <${OpeningScreen}
+                key="opening"
+                onGetStarted=${handleOpeningGetStarted}
+                onSignIn=${handleOpeningSignIn}
+              />
+            `
           : !profileStepComplete
           ? html`
                 <${AccountScreen}
@@ -7987,21 +8734,42 @@ function App() {
                   onContinueAsGuest=${handleContinueAsGuest}
                 />
               `
-          : !moodCheckInComplete
+          : !profile.setupComplete && currentSetupStep === 1
+            ? html`
+                <${SetupAboutScreen}
+                  key="setup-about"
+                  profileDraft=${profileDraft}
+                  onProfileDraftChange=${handleProfileDraftChange}
+                  onContinue=${handleSetupAboutContinue}
+                />
+              `
+          : !profile.setupComplete && currentSetupStep === 2
             ? html`
                 <${MoodCheckInScreen}
                   key="mood"
                   moodSelection=${moodSelection}
+                  moodNote=${moodNote}
                   onMoodSelect=${handleMoodSelect}
+                  onMoodNoteChange=${setMoodNote}
+                  onMoodContinue=${handleMoodContinue}
+                  onMoodSkip=${handleMoodSkip}
                 />
               `
-          : !routineStepComplete
+          : !profile.setupComplete && currentSetupStep === 3
             ? html`
-                <${RoutineSetupScreen}
-                  key="routine"
+                <${SetupScheduleBasicsScreen}
+                  key="setup-schedule"
                   routineDraft=${routineDraft}
                   onRoutineChange=${handleRoutineChange}
                   onRoutineWorkloadSelect=${handleRoutineWorkloadSelect}
+                  onContinue=${handleScheduleBasicsContinue}
+                />
+              `
+          : !profile.setupComplete
+            ? html`
+                <${SetupRoutineBuilderScreen}
+                  key="setup-routine"
+                  routineDraft=${routineDraft}
                   onRoutineActivityChange=${handleRoutineActivityChange}
                   onRoutineActivityAdd=${handleRoutineActivityAdd}
                   onRoutineActivityRemove=${handleRoutineActivityRemove}
@@ -8037,6 +8805,7 @@ function App() {
                   calendarTaskDraft=${calendarTaskDraft}
                   editingCalendarTaskId=${editingCalendarTaskId}
                   calendarMonth=${calendarMonth}
+                  calendarView=${calendarView}
                   selectedCalendarDate=${selectedCalendarDate}
                   calendarPreferences=${calendarPreferences}
                   dailyLogs=${dailyLogs}
@@ -8056,6 +8825,7 @@ function App() {
                   onCalendarTaskEdit=${handleCalendarTaskEdit}
                   onCalendarTaskCancelEdit=${handleCalendarTaskCancelEdit}
                   onCalendarMonthChange=${handleCalendarToday}
+                  onCalendarViewChange=${setCalendarView}
                   onSelectedCalendarDateChange=${setSelectedCalendarDate}
                   onCalendarTaskToggle=${handleCalendarTaskToggle}
                   onCalendarTaskDelete=${handleCalendarTaskDelete}
