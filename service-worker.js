@@ -1,9 +1,9 @@
-const VIRELI_CACHE = "vireli-day12-shell-v2";
+const VIRELI_CACHE = "vireli-day16-foundation-redesign-shell-v2";
 const VIRELI_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=day12-intelligent-scheduling-20260820b",
-  "./script.js?v=day12-intelligent-scheduling-20260820b",
+  "./styles.css?v=day16-foundation-redesign-20260827b",
+  "./script.js?v=day16-foundation-redesign-20260827b",
   "./manifest.webmanifest",
   "./icons/vireli-icon.svg",
 ];

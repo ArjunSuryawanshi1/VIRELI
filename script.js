@@ -5,6 +5,8 @@ const html = htm.bind(React.createElement);
 const NAV_ITEMS = [
   { id: "home", label: "Home" },
   { id: "assignments", label: "Assignments" },
+  { id: "tasks", label: "Tasks" },
+  { id: "meetings", label: "Meetings" },
   { id: "routine", label: "Your Routine" },
   { id: "ask", label: "Ask VIRELI" },
   { id: "calendar", label: "Calendar" },
@@ -13,16 +15,45 @@ const NAV_ITEMS = [
   { id: "settings", label: "Settings" },
 ];
 
-const PRIMARY_NAV_ITEMS = NAV_ITEMS.filter((item) =>
-  ["home", "assignments", "routine", "ask", "calendar", "daily-log"].includes(item.id),
-);
-const MOBILE_NAV_ITEMS = [
-  { id: "home", label: "Home" },
-  { id: "assignments", label: "Assignments" },
-  { id: "ask", label: "Ask" },
-  { id: "calendar", label: "Calendar" },
-  { id: "more", label: "More" },
-];
+function getPrimaryNavItems(primaryUse = "School") {
+  const visibleIds =
+    primaryUse === "Work"
+      ? ["home", "tasks", "meetings", "ask", "calendar", "daily-log", "routine"]
+      : primaryUse === "Other"
+        ? ["home", "tasks", "ask", "calendar", "daily-log", "routine"]
+        : ["home", "assignments", "tasks", "ask", "calendar", "daily-log", "routine"];
+  return visibleIds
+    .map((id) => NAV_ITEMS.find((item) => item.id === id))
+    .filter(Boolean);
+}
+
+function getMobileNavItems(primaryUse = "School") {
+  return primaryUse === "Work"
+    ? [
+        { id: "home", label: "Home" },
+        { id: "tasks", label: "Tasks" },
+        { id: "meetings", label: "Meetings" },
+        { id: "ask", label: "Ask" },
+        { id: "calendar", label: "Calendar" },
+        { id: "daily-log", label: "Log" },
+      ]
+    : primaryUse === "Other"
+      ? [
+          { id: "home", label: "Home" },
+          { id: "tasks", label: "Tasks" },
+          { id: "ask", label: "Ask" },
+          { id: "calendar", label: "Calendar" },
+          { id: "daily-log", label: "Log" },
+        ]
+    : [
+        { id: "home", label: "Home" },
+        { id: "assignments", label: "Assignments" },
+        { id: "tasks", label: "Tasks" },
+        { id: "ask", label: "Ask" },
+        { id: "calendar", label: "Calendar" },
+        { id: "daily-log", label: "Log" },
+      ];
+}
 
 const CLASS_STORAGE_KEY = "vireli.savedClasses.v1";
 const HOMEWORK_STORAGE_KEY = "vireli.homework.v1";
@@ -48,9 +79,9 @@ const DEFAULT_CLASS_OPTIONS = [
 ];
 
 const MOOD_OPTIONS = [
-  { id: "good", label: "Good", text: "Bright, lifted, and ready enough." },
-  { id: "ok", label: "Okay", text: "Steady, neutral, or still waking up." },
-  { id: "bad", label: "Bad", text: "Heavy, tired, stressed, or low." },
+  { id: "good", label: "Good", text: "You have some energy today. Let’s use it well." },
+  { id: "ok", label: "Okay", text: "Let’s build a realistic plan for today." },
+  { id: "bad", label: "Bad", text: "Let’s make today more manageable." },
 ];
 
 const RESPONSE_TYPE_OPTIONS = [
@@ -105,6 +136,7 @@ const EMPTY_PROFILE = {
     automaticRescheduling: true,
     askBeforeMoving: true,
     moodAffectsScheduling: true,
+    moodInfluenceStrength: "Medium",
   },
   createdAt: "",
   updatedAt: "",
@@ -116,6 +148,7 @@ const EMPTY_ROUTINE_DRAFT = {
   dailyActivities: [],
   mealTimes: [],
   preferredDailyWorkloadMinutes: "",
+  preferredWorkIntervalMinutes: "",
   preferredWorkloadLabel: "",
   weekdayWorkloadMinutes: "",
   weekendWorkloadMinutes: "",
@@ -172,30 +205,55 @@ const EMPTY_FEEDBACK_DRAFT = {
   text: "",
 };
 
-const APP_VERSION = "day12-intelligent-scheduling-20260820b";
-const INTRO_ANIMATION_SECONDS = 0.35;
-const INTRO_SCREEN_DURATION_MS = 0;
+const APP_VERSION = "day16-foundation-redesign-20260827b";
+const INTRO_ANIMATION_SECONDS = 0.8;
+const INTRO_SCREEN_DURATION_MS = 2400;
 const THEME_TRANSITION_DURATION_MS = 2000;
 const DAY_MODE_START_HOUR = 3;
 const REFLECTION_MODE_START_HOUR = 15;
 const CHAT_RESPONSE_DELAY_MS = 720;
 const ASK_HISTORY_LIMIT = 16;
 const ASK_RECENT_WINDOW_DAYS = 7;
+const FEEDBACK_QUICK_OPTIONS = [
+  "This wasn’t realistic",
+  "Wrong priority",
+  "Bad time",
+  "This is an event, not an assignment",
+  "Don’t recommend this again",
+];
 
 const DAILY_LOG_RATINGS = ["Great", "Good", "OK", "Bad", "Miserable"];
 const SCHEDULE_OPTIONS = ["Morning", "Afternoon", "Evening", "Custom"];
 const PRIORITY_OPTIONS = ["Low", "Normal", "High"];
-const HOMEWORK_TYPE_OPTIONS = ["Task", "Event"];
+const CALENDAR_ITEM_TYPE_OPTIONS = ["Task", "Event", "Meeting"];
 const PLAN_FREQUENCY_OPTIONS = ["Never", "Daily", "Weekdays", "Weekly", "Monthly", "Custom"];
 const WORKLOAD_OPTIONS = [
-  { id: "light", label: "Light", minutes: 120 },
-  { id: "balanced", label: "Balanced", minutes: 180 },
-  { id: "focused", label: "Focused", minutes: 240 },
+  { id: "one-hour", label: "1 hour", minutes: 60 },
+  { id: "two-hours", label: "2 hours", minutes: 120 },
+  { id: "three-hours", label: "3 hours", minutes: 180 },
+  { id: "four-hours", label: "4 hours", minutes: 240 },
   { id: "custom", label: "Custom", minutes: "" },
 ];
+const WORK_INTERVAL_OPTIONS = [
+  { id: "15", label: "15 minutes", minutes: 15 },
+  { id: "30", label: "30 minutes", minutes: 30 },
+  { id: "45", label: "45 minutes", minutes: 45 },
+  { id: "60", label: "60 minutes", minutes: 60 },
+  { id: "custom", label: "Custom", minutes: "" },
+];
+const TIME_PICKER_HOURS = Array.from({ length: 12 }, (_, index) => String(index + 1));
+const TIME_PICKER_MINUTES = ["00", "05", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55"];
+const DURATION_PICKER_OPTIONS = Array.from({ length: 16 }, (_, index) => {
+  const minutes = 30 + index * 15;
+  return { value: String(minutes), label: formatDurationFromMinutes(minutes) };
+});
+const INTERVAL_PICKER_OPTIONS = [15, 20, 25, 30, 35, 40, 45, 50, 60, 75, 90].map((minutes) => ({
+  value: String(minutes),
+  label: formatDurationFromMinutes(minutes),
+}));
 const PRIMARY_USE_OPTIONS = ["School", "Work", "Other"];
 const ROUTINE_DAY_OPTIONS = ["Every day", "Weekdays", "Weekends", "Custom"];
-const SETUP_STEPS = ["About You", "Mood Pulse", "Schedule Basics", "Your Routine"];
+const SETUP_STEPS = ["About You", "Check In", "Schedule Basics"];
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const REMINDER_TIMING_OPTIONS = [
   "At planned time",
@@ -377,14 +435,7 @@ function isHardMood(mood) {
 }
 
 function getMoodTheme(mood) {
-  return (
-    {
-      good: "good",
-      ok: "ok",
-      bad: "bad",
-      overwhelmed: "overwhelmed",
-    }[mood] || "default"
-  );
+  return "default";
 }
 
 function makeId(prefix) {
@@ -539,6 +590,35 @@ function loadProfile() {
   };
 }
 
+function migrateWorkloadMinutes(entry = {}) {
+  const explicitMinutes = String(entry.preferredDailyWorkloadMinutes || "").trim();
+  if (explicitMinutes) {
+    return explicitMinutes;
+  }
+
+  const legacyLabel = String(entry.preferredWorkloadLabel || "").toLowerCase();
+  if (legacyLabel === "light") {
+    return "120";
+  }
+  if (legacyLabel === "balanced") {
+    return "180";
+  }
+  if (legacyLabel === "focused") {
+    return "240";
+  }
+  return "";
+}
+
+function getWorkloadLabelFromMinutes(minutesValue) {
+  const match = WORKLOAD_OPTIONS.find((option) => option.minutes && String(option.minutes) === String(minutesValue));
+  return match?.label || (minutesValue ? "Custom" : "");
+}
+
+function getWorkIntervalLabelFromMinutes(minutesValue) {
+  const match = WORK_INTERVAL_OPTIONS.find((option) => option.minutes && String(option.minutes) === String(minutesValue));
+  return match?.label || (minutesValue ? "Custom" : "");
+}
+
 function normalizeRoutineEntry(entry = {}) {
   const rawActivities = Array.isArray(entry.dailyActivities)
     ? entry.dailyActivities
@@ -557,6 +637,7 @@ function normalizeRoutineEntry(entry = {}) {
           days: String(item.days || "Weekdays").trim(),
           fixed: item.fixed !== false,
           flexible: Boolean(item.flexible),
+          activityType: String(item.activityType || "").trim(),
           active: item.active !== false,
         };
       }
@@ -569,11 +650,15 @@ function normalizeRoutineEntry(entry = {}) {
         days: "Weekdays",
         fixed: true,
         flexible: false,
+        activityType: "",
         active: true,
       };
     })
     .filter((item) => item.name || item.durationMinutes || item.usualTime)
     .slice(0, 8);
+
+  const preferredDailyWorkloadMinutes = migrateWorkloadMinutes(entry);
+  const preferredWorkIntervalMinutes = String(entry.preferredWorkIntervalMinutes || "").trim();
 
   return {
     ...EMPTY_ROUTINE_DRAFT,
@@ -582,10 +667,12 @@ function normalizeRoutineEntry(entry = {}) {
     bedTime: String(entry.bedTime || ""),
     dailyActivities,
     mealTimes: [],
-    preferredDailyWorkloadMinutes: String(entry.preferredDailyWorkloadMinutes || ""),
-    preferredWorkloadLabel: String(entry.preferredWorkloadLabel || ""),
-    weekdayWorkloadMinutes: String(entry.weekdayWorkloadMinutes || entry.preferredDailyWorkloadMinutes || ""),
-    weekendWorkloadMinutes: String(entry.weekendWorkloadMinutes || entry.preferredDailyWorkloadMinutes || ""),
+    preferredDailyWorkloadMinutes,
+    preferredWorkIntervalMinutes,
+    preferredWorkloadLabel: getWorkloadLabelFromMinutes(preferredDailyWorkloadMinutes),
+    preferredWorkIntervalLabel: getWorkIntervalLabelFromMinutes(preferredWorkIntervalMinutes),
+    weekdayWorkloadMinutes: String(entry.weekdayWorkloadMinutes || preferredDailyWorkloadMinutes || ""),
+    weekendWorkloadMinutes: String(entry.weekendWorkloadMinutes || preferredDailyWorkloadMinutes || ""),
     createdAt: entry.createdAt || "",
     updatedAt: entry.updatedAt || "",
   };
@@ -624,12 +711,15 @@ function saveRoutine(routineDraft) {
         days: String(item.days || "Weekdays").trim(),
         fixed: item.fixed !== false,
         flexible: Boolean(item.flexible),
+        activityType: String(item.activityType || "").trim(),
         active: item.active !== false,
       }))
       .filter((item) => item.name || item.durationMinutes || item.usualTime),
     mealTimes: [],
     preferredDailyWorkloadMinutes: String(routineDraft.preferredDailyWorkloadMinutes || "").trim(),
     preferredWorkloadLabel: String(routineDraft.preferredWorkloadLabel || "").trim(),
+    preferredWorkIntervalMinutes: String(routineDraft.preferredWorkIntervalMinutes || "").trim(),
+    preferredWorkIntervalLabel: String(routineDraft.preferredWorkIntervalLabel || "").trim(),
     weekdayWorkloadMinutes: String(routineDraft.weekdayWorkloadMinutes || routineDraft.preferredDailyWorkloadMinutes || "").trim(),
     weekendWorkloadMinutes: String(routineDraft.weekendWorkloadMinutes || routineDraft.preferredDailyWorkloadMinutes || "").trim(),
     createdAt: routineDraft.createdAt || now,
@@ -642,12 +732,16 @@ function saveRoutine(routineDraft) {
 
 function normalizeCalendarTask(task = {}) {
   const itemType = task.itemType || task.type || "Task";
+  const normalizedType = itemType === "Meeting" ? "Meeting" : itemType === "Event" ? "Event" : "Task";
   return {
     ...EMPTY_CALENDAR_TASK_DRAFT,
     ...task,
     id: task.id || makeId("task"),
     title: task.title || "Untitled task",
-    itemType: itemType === "Event" ? "Event" : "Task",
+    itemType: normalizedType,
+    type: normalizedType,
+    fixed: normalizedType === "Meeting" ? true : Boolean(task.fixed),
+    flexible: normalizedType === "Meeting" ? false : task.fixed ? false : task.flexible !== false,
     frequency: task.frequency && task.frequency !== "One time" ? task.frequency : "Never",
     allDay: Boolean(task.allDay),
     repeat: Boolean(task.repeat || (task.frequency && task.frequency !== "Never" && task.frequency !== "One time")),
@@ -1172,6 +1266,7 @@ function getTodayScheduleBlocks({
         source: "routine",
         title: activity.name,
         fixed: activity.fixed !== false,
+        activityType: activity.activityType || "",
         startMinutes: adjustedStart,
         endMinutes: adjustedStart + duration,
       };
@@ -1190,6 +1285,8 @@ function getTodayScheduleBlocks({
         id: task.id,
         source: "calendar",
         title: task.title,
+        itemType: task.itemType,
+        fixed: task.fixed,
         startMinutes: adjustedStart,
         endMinutes: adjustedStart + getCalendarItemDuration(task),
       };
@@ -1209,6 +1306,7 @@ function getTodayScheduleBlocks({
         id: item.id,
         source: "plan",
         title: item.title,
+        itemType: "Assignment",
         startMinutes,
         endMinutes: Math.min(bedMinutes, startMinutes + getAssignmentDuration(item)),
       };
@@ -1370,7 +1468,7 @@ function getCalendarItemDuration(item) {
   if (start !== null && end !== null && end > start) {
     return end - start;
   }
-  return item.itemType === "Event" ? 60 : 45;
+  return item.itemType === "Meeting" || item.itemType === "Event" ? 60 : 45;
 }
 
 function getCalendarTaskEndTime(task) {
@@ -1439,6 +1537,7 @@ function getChronologicalDayItems({ routine = EMPTY_ROUTINE_DRAFT, homeworkItems
   return schedule.timelineBlocks.map((block) => ({
     id: block.id,
     source: block.source,
+    sourceLabel: getScheduleSourceLabel(block.source, block),
     title: block.title,
     timeLabel: `${formatTimeLabel(minutesToTimeValue(block.startMinutes))} - ${formatTimeLabel(minutesToTimeValue(block.endMinutes))}`,
     durationLabel: formatDurationFromMinutes(block.endMinutes - block.startMinutes),
@@ -1448,6 +1547,56 @@ function getChronologicalDayItems({ routine = EMPTY_ROUTINE_DRAFT, homeworkItems
   }));
 }
 
+function getScheduleSourceLabel(source, item = {}) {
+  if (source === "free") {
+    return "Free time";
+  }
+  if (source === "routine") {
+    return item.fixed === false ? "Flexible routine" : "Fixed busy time";
+  }
+  if (source === "plan" || source === "homework") {
+    return "Assignment";
+  }
+  if (source === "task") {
+    return item.itemType === "Meeting" ? "Meeting" : item.itemType === "Event" ? "Event" : "Task";
+  }
+  if (source === "calendar") {
+    return item.itemType === "Meeting" ? "Meeting" : item.itemType === "Event" ? "Event" : "Task";
+  }
+  return "Schedule item";
+}
+
+function getAskPromptChips({ routine = EMPTY_ROUTINE_DRAFT, homeworkItems = [], calendarTasks = [], mood = "", primaryUse = "School" }) {
+  const recommendation = getNextAssignmentRecommendation({ routine, homeworkItems, calendarTasks, mood });
+  const freeWindow = recommendation.freeWindows[0];
+  const openAssignment = homeworkItems.find((item) => !item.completed);
+  const upcomingEvent = calendarTasks
+    .filter((item) => !item.completed && (item.scheduledDate || item.dueDate) >= getDateInputValue())
+    .sort((a, b) => `${a.scheduledDate || a.dueDate || "9999-12-31"} ${a.scheduledTime || ""}`.localeCompare(`${b.scheduledDate || b.dueDate || "9999-12-31"} ${b.scheduledTime || ""}`))[0];
+  const chips = ["What should I do next?"];
+
+  if (primaryUse === "Work") {
+    chips.push("Schedule a team meeting Friday at 2");
+  } else if (primaryUse === "Other") {
+    chips.push("Add a workout tomorrow at 5");
+  } else if (openAssignment?.title) {
+    chips.push(`Plan ${openAssignment.title}`);
+  } else {
+    chips.push("Add my science project due Friday");
+  }
+  if (freeWindow) {
+    chips.push(`What fits in ${freeWindow.durationLabel}?`);
+  }
+  if (upcomingEvent?.title) {
+    chips.push(`Work around ${upcomingEvent.title}`);
+  }
+  if (routine.preferredWorkIntervalMinutes) {
+    chips.push(`Use ${formatDurationFromMinutes(Number(routine.preferredWorkIntervalMinutes))} blocks`);
+  }
+
+  return Array.from(new Set(chips)).slice(0, 5);
+}
+
 function getAssignmentSubject(item, classes = []) {
   return item.classLabel || (item.classId ? getClassLabel(classes, item.classId, "") : "") || "Assignment";
 }
@@ -1455,6 +1604,46 @@ function getAssignmentSubject(item, classes = []) {
 function getAssignmentDuration(item) {
   const minutes = Number(item.estimatedMinutes);
   return Number.isFinite(minutes) && minutes > 0 ? minutes : 45;
+}
+
+function getMoodLabel(mood) {
+  return MOOD_OPTIONS.find((option) => option.id === mood)?.label || "";
+}
+
+function getRecommendationFactors({ item, recommendation, routine = EMPTY_ROUTINE_DRAFT, mood = "" }) {
+  if (!item) {
+    return [];
+  }
+
+  const factors = [];
+  const nextWindow = recommendation?.freeWindows?.[0];
+  const workloadMinutes = getPreferredWorkloadMinutes(routine);
+  const intervalMinutes = Number(routine.preferredWorkIntervalMinutes);
+  const fixedCount = (routine.dailyActivities || []).filter((activity) => activity.name && activity.fixed !== false).length;
+
+  if (item.dueDate) {
+    factors.push(`Deadline: due ${formatShortDate(item.dueDate)}.`);
+  }
+  if (item.priority && item.priority !== "Normal") {
+    factors.push(`Priority: marked ${item.priority}.`);
+  }
+  if (nextWindow) {
+    factors.push(`Free time: ${nextWindow.label} is open.`);
+  }
+  if (mood) {
+    factors.push(`Mood: ${getMoodLabel(mood)} check-in keeps the plan realistic.`);
+  }
+  if (workloadMinutes) {
+    factors.push(`Workload hours: ${formatDurationFromMinutes(workloadMinutes)} preferred today.`);
+  }
+  if (Number.isFinite(intervalMinutes) && intervalMinutes > 0) {
+    factors.push(`Preferred interval: ${formatDurationFromMinutes(intervalMinutes)} blocks.`);
+  }
+  if (fixedCount) {
+    factors.push(`${fixedCount} fixed commitment${fixedCount === 1 ? "" : "s"} protected.`);
+  }
+
+  return factors.slice(0, 5);
 }
 
 function estimateAssignmentMinutes(title = "", details = "") {
@@ -3339,10 +3528,7 @@ function BrandLockup({ compact = false }) {
 function VireliLogoMark({ className = "", animated = false }) {
   return html`
     <div className=${cx("vireli-logo-mark", animated && "is-animated", className)} aria-label="VIRELI logo">
-      <span className="vireli-logo-v">V</span>
-      <span className="vireli-logo-orbit" aria-hidden="true"></span>
-      <span className="vireli-logo-spark vireli-logo-spark-one" aria-hidden="true"></span>
-      <span className="vireli-logo-spark vireli-logo-spark-two" aria-hidden="true"></span>
+      <img src="./icons/vireli-icon.svg" alt="" aria-hidden="true" />
     </div>
   `;
 }
@@ -3504,7 +3690,7 @@ function GraphBackdrop() {
   `;
 }
 
-function OpeningScreen({ onGetStarted, onSignIn }) {
+function OpeningScreen() {
   return html`
     <${motion.section}
       className="intro-screen opening-screen min-h-screen relative flex items-center justify-center overflow-hidden px-6"
@@ -3518,51 +3704,30 @@ function OpeningScreen({ onGetStarted, onSignIn }) {
       <div className="intro-grid"></div>
       <div className="intro-title-shell opening-title-shell">
         <${motion.div}
-          initial=${{
-            opacity: 0,
-            filter: "blur(16px)",
-            scale: 0.92,
-          }}
-          animate=${{
-            opacity: 1,
-            filter: "blur(0px)",
-            scale: 1,
-          }}
+          className="opening-brand-motion"
+          initial=${{ opacity: 0, x: -72, filter: "blur(14px)" }}
+          animate=${{ opacity: 1, x: 0, filter: "blur(0px)" }}
           transition=${{
-            duration: 0.7,
+            duration: 0.82,
             ease: [0.16, 1, 0.3, 1],
           }}
         >
-          <div className="opening-logo-shell">
-            <${VireliLogoMark} animated=${true} />
-          </div>
-          <h1 className="intro-word opening-word font-display">Vireli</h1>
-          <p className="intro-overline opening-overline">Your day, organized around you.</p>
-          <p className="intro-promise">
-            Plan less. Know what to do next.
-          </p>
-          <div className="opening-action-row">
-            <button type="button" className="primary-button opening-primary" onClick=${onGetStarted}>
-              Get Started
-            </button>
-            <button type="button" className="secondary-button opening-secondary" onClick=${onSignIn}>
-              Sign In
-            </button>
-          </div>
-        </${motion.div}>
-        <${motion.div}
-          className="opening-preview-card"
-          initial=${{ opacity: 0, y: 18 }}
-          animate=${{ opacity: 1, y: 0 }}
-          transition=${{
-            duration: 0.55,
-            delay: 0.22,
-            ease: [0.22, 1, 0.36, 1],
-          }}
-        >
-          <span>Right now</span>
-          <strong>Biology review</strong>
-          <small>4:15-4:45 PM</small>
+          <${motion.h1}
+            className="intro-word opening-word font-display"
+            initial=${{ opacity: 0, x: "-34vw", filter: "blur(10px)" }}
+            animate=${{ opacity: 1, x: 0, filter: "blur(0px)" }}
+            transition=${{ duration: 1.05, delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
+          >
+            VIRELI
+          </${motion.h1}>
+          <${motion.p}
+            className="intro-credit opening-credit"
+            initial=${{ opacity: 0, x: -24 }}
+            animate=${{ opacity: 1, x: 0 }}
+            transition=${{ duration: 0.58, delay: 0.32, ease: [0.16, 1, 0.3, 1] }}
+          >
+            By Kribu Studios
+          </${motion.p}>
         </${motion.div}>
       </div>
     </${motion.section}>
@@ -3588,10 +3753,8 @@ function SetupProgress({ step }) {
 function SetupAboutScreen({
   profileDraft,
   onProfileDraftChange,
-  onContinue,
+  onModeSelect,
 }) {
-  const canContinue = Boolean(profileDraft.name.trim() && profileDraft.primaryUse);
-
   return html`
     <${motion.section}
       className="mood-screen min-h-screen relative flex items-center justify-center overflow-hidden px-5 py-8 sm:px-8"
@@ -3610,48 +3773,29 @@ function SetupAboutScreen({
           transition=${{ duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
         >
           <div className="mood-heading mood-heading-centered">
-            <div className="mood-pulse-brand-mark font-display" aria-hidden="true">V</div>
-            <p className="eyebrow">Setup 1 of 4 · About You</p>
-            <h2 className="font-display">What should VIRELI call you?</h2>
-            <p>Tell VIRELI what exists first. Then it can help decide what matters now.</p>
+            <p className="eyebrow">Setup 1 of 3 · About You</p>
+            <h2 className="font-display">What are you using VIRELI for?</h2>
           </div>
 
           <div className="setup-form-stack">
-            <label className="field-stack">
-              <span>Name</span>
-              <input
-                className="planning-input"
-                value=${profileDraft.name}
-                onInput=${(event) => onProfileDraftChange("name", event.target.value)}
-                placeholder="Your name"
-                autoComplete="given-name"
-              />
-            </label>
-
-            <div className="field-stack">
-              <span>Primary use</span>
-              <div className="setup-choice-grid">
-                ${PRIMARY_USE_OPTIONS.map(
-                  (option) => html`
-                    <button
-                      key=${option}
-                      type="button"
-                      className=${cx("mood-choice setup-choice", profileDraft.primaryUse === option && "is-selected")}
-                      aria-pressed=${profileDraft.primaryUse === option}
-                      onClick=${() => onProfileDraftChange("primaryUse", option)}
-                    >
-                      <span className="mood-choice-label">${option}</span>
-                    </button>
-                  `,
-                )}
-              </div>
+            <div className="setup-choice-grid setup-choice-grid-large">
+              ${PRIMARY_USE_OPTIONS.map(
+                (option) => html`
+                  <button
+                    key=${option}
+                    type="button"
+                    className=${cx("mood-choice setup-choice setup-mode-choice", profileDraft.primaryUse === option && "is-selected")}
+                    aria-pressed=${profileDraft.primaryUse === option}
+                    onClick=${() => {
+                      onProfileDraftChange("primaryUse", option);
+                      onModeSelect(option);
+                    }}
+                  >
+                    <span className="mood-choice-label">${option}</span>
+                  </button>
+                `,
+              )}
             </div>
-          </div>
-
-          <div className="mood-control-row">
-            <button type="button" className="primary-button" disabled=${!canContinue} onClick=${onContinue}>
-              Continue
-            </button>
           </div>
         </${motion.div}>
       </div>
@@ -3664,10 +3808,7 @@ function MoodCheckInScreen({
   moodNote,
   onMoodSelect,
   onMoodNoteChange,
-  onMoodContinue,
-  onMoodSkip,
 }) {
-  const showNote = moodSelection === "ok" || moodSelection === "bad";
   return html`
     <${motion.section}
       className="mood-screen min-h-screen relative flex items-center justify-center overflow-hidden px-5 py-8 sm:px-8"
@@ -3681,24 +3822,14 @@ function MoodCheckInScreen({
       <div className="relative z-10 mx-auto flex w-full max-w-5xl flex-col items-center gap-5">
         <${SetupProgress} step=${2} />
         <${motion.div}
-          className="mood-logo-wrap mood-logo-floating"
-          initial=${{ opacity: 0, scale: 0.72, y: 18 }}
-          animate=${{ opacity: 1, scale: 1, y: 0 }}
-          transition=${{ duration: 0.75, ease: [0.22, 1, 0.36, 1] }}
-        >
-          <${VireliLogoMark} animated=${true} />
-        </${motion.div}>
-        <${motion.div}
           className="mood-panel mood-panel-centered"
           initial=${{ opacity: 0, y: 28 }}
           animate=${{ opacity: 1, y: 0 }}
           transition=${{ duration: 0.7, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
         >
-          <div className="mood-heading mood-heading-centered">
-            <div className="mood-pulse-brand-mark font-display" aria-hidden="true">V</div>
-            <p className="eyebrow">Setup 2 of 4 · Mood pulse</p>
-            <h2 className="font-display">How are you doing today?</h2>
-            <p>Quick and optional. Mood helps VIRELI keep the schedule realistic.</p>
+            <div className="mood-heading mood-heading-centered">
+            <p className="eyebrow">Setup 2 of 3 · Check In</p>
+            <h2 className="font-display">How Are You Doing Today?</h2>
           </div>
 
           <div className="mood-grid mood-grid-centered">
@@ -3714,30 +3845,9 @@ function MoodCheckInScreen({
                   onClick=${() => onMoodSelect(option.id)}
                 >
                   <span className="mood-choice-label">${option.label}</span>
-                  <span className="mood-choice-text">${option.text}</span>
                 </button>
               `,
             )}
-          </div>
-          ${showNote
-            ? html`
-                <label className="field-stack mood-note-field">
-                  <span>Optional note</span>
-                  <textarea
-                    className="bad-flow-input"
-                    value=${moodNote}
-                    onInput=${(event) => onMoodNoteChange(event.target.value)}
-                    rows="3"
-                    placeholder="Anything VIRELI should keep in mind?"
-                  ></textarea>
-                </label>
-              `
-            : null}
-          <div className="mood-control-row mood-control-row-centered">
-            <button type="button" className="secondary-button" onClick=${onMoodSkip}>Skip</button>
-            <button type="button" className="primary-button" onClick=${onMoodContinue}>
-              Continue
-            </button>
           </div>
         </${motion.div}>
       </div>
@@ -3745,13 +3855,100 @@ function MoodCheckInScreen({
   `;
 }
 
+function getTimePickerParts(value) {
+  if (!value || !/^\d{2}:\d{2}$/.test(value)) {
+    return { hour: "", minute: "", period: "AM" };
+  }
+
+  const [hourValue, minute] = value.split(":");
+  const hour24 = Number(hourValue);
+  const period = hour24 >= 12 ? "PM" : "AM";
+  const hour12 = hour24 % 12 || 12;
+  return { hour: String(hour12), minute, period };
+}
+
+function getTimeValueFromPicker(parts) {
+  let hour = Number(parts.hour || "7");
+  if (parts.period === "PM" && hour < 12) {
+    hour += 12;
+  }
+  if (parts.period === "AM" && hour === 12) {
+    hour = 0;
+  }
+  return `${String(hour).padStart(2, "0")}:${parts.minute || "00"}`;
+}
+
+function TimeScrollPicker({ label, help = "", value, onChange }) {
+  const parts = getTimePickerParts(value);
+  const updatePart = (field, nextValue) => {
+    onChange(getTimeValueFromPicker({ ...parts, [field]: nextValue }));
+  };
+
+  return html`
+    <div className="scroll-picker-field">
+      <span>${label}</span>
+      ${help ? html`<small>${help}</small>` : null}
+      <div className="scroll-picker-row" role="group" aria-label=${label}>
+        <select
+          className="scroll-picker-select"
+          value=${parts.hour}
+          onChange=${(event) => updatePart("hour", event.target.value)}
+          aria-label=${`${label} hour`}
+        >
+          <option value="">Hour</option>
+          ${TIME_PICKER_HOURS.map((hour) => html`<option key=${hour} value=${hour}>${hour}</option>`)}
+        </select>
+        <select
+          className="scroll-picker-select"
+          value=${parts.minute}
+          onChange=${(event) => updatePart("minute", event.target.value)}
+          aria-label=${`${label} minute`}
+        >
+          <option value="">Min</option>
+          ${TIME_PICKER_MINUTES.map((minute) => html`<option key=${minute} value=${minute}>${minute}</option>`)}
+        </select>
+        <select
+          className="scroll-picker-select is-period"
+          value=${parts.period}
+          onChange=${(event) => updatePart("period", event.target.value)}
+          aria-label=${`${label} AM or PM`}
+        >
+          <option value="AM">AM</option>
+          <option value="PM">PM</option>
+        </select>
+      </div>
+    </div>
+  `;
+}
+
+function DurationScrollPicker({ label, help = "", value, options, onChange }) {
+  return html`
+    <label className="scroll-picker-field">
+      <span>${label}</span>
+      ${help ? html`<small>${help}</small>` : null}
+      <select
+        className="scroll-picker-select scroll-picker-duration"
+        value=${value}
+        onChange=${(event) => onChange(event.target.value)}
+      >
+        <option value="">Select duration</option>
+        ${options.map((option) => html`<option key=${option.value} value=${option.value}>${option.label}</option>`)}
+      </select>
+    </label>
+  `;
+}
+
 function SetupScheduleBasicsScreen({
   routineDraft,
   onRoutineChange,
-  onRoutineWorkloadSelect,
   onContinue,
 }) {
-  const canContinue = Boolean(routineDraft.wakeTime && routineDraft.bedTime && routineDraft.preferredDailyWorkloadMinutes);
+  const canContinue = Boolean(
+    routineDraft.wakeTime &&
+      routineDraft.bedTime &&
+      routineDraft.preferredDailyWorkloadMinutes &&
+      routineDraft.preferredWorkIntervalMinutes,
+  );
   const previewRoutine = normalizeRoutineEntry(routineDraft);
   const schedule = getTodayScheduleBlocks({ routine: previewRoutine, homeworkItems: [], calendarTasks: [] });
 
@@ -3773,51 +3970,45 @@ function SetupScheduleBasicsScreen({
           transition=${{ duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
         >
           <div className="mood-heading">
-            <p className="eyebrow">Setup 3 of 4 · Schedule Basics</p>
-            <h2 className="font-display">When is your day usable?</h2>
-            <p>Wake time, sleep time, and workload limits keep VIRELI from overscheduling you.</p>
+            <p className="eyebrow">Setup 3 of 3 · Schedule Basics</p>
+            <h2 className="font-display">Set Your Routine</h2>
           </div>
           <div className="routine-form">
-            <div className="routine-time-grid">
-              <label className="field-stack">
-                <span>Wake time</span>
-                <input className="planning-input" type="time" value=${routineDraft.wakeTime} onInput=${(event) => onRoutineChange("wakeTime", event.target.value)} />
-              </label>
-              <label className="field-stack">
-                <span>Sleep time</span>
-                <input className="planning-input" type="time" value=${routineDraft.bedTime} onInput=${(event) => onRoutineChange("bedTime", event.target.value)} />
-              </label>
-            </div>
-            <div className="field-stack">
-              <span>Workload</span>
-              <div className="workload-choice-grid">
-                ${WORKLOAD_OPTIONS.map(
-                  (option) => html`
-                    <button
-                      key=${option.id}
-                      type="button"
-                      className=${cx("choice-chip workload-choice", routineDraft.preferredWorkloadLabel === option.label && "is-selected")}
-                      onClick=${() => onRoutineWorkloadSelect(option)}
-                    >
-                      ${option.label}
-                    </button>
-                  `,
-                )}
+            <div className="scroll-picker-grid">
+              <div className="setup-picker-card">
+                <${TimeScrollPicker}
+                  label="Wake Time"
+                  help="Choose when your day normally starts."
+                  value=${routineDraft.wakeTime}
+                  onChange=${(value) => onRoutineChange("wakeTime", value)}
+                />
               </div>
-              ${routineDraft.preferredWorkloadLabel === "Custom"
-                ? html`
-                    <input
-                      className="planning-input"
-                      type="number"
-                      min="15"
-                      step="15"
-                      inputMode="numeric"
-                      value=${routineDraft.preferredDailyWorkloadMinutes}
-                      onInput=${(event) => onRoutineChange("preferredDailyWorkloadMinutes", event.target.value)}
-                      placeholder="Minutes"
-                    />
-                  `
-                : null}
+              <div className="setup-picker-card">
+                <${TimeScrollPicker}
+                  label="Sleep Time"
+                  help="Choose when your day normally ends."
+                  value=${routineDraft.bedTime}
+                  onChange=${(value) => onRoutineChange("bedTime", value)}
+                />
+              </div>
+              <div className="setup-picker-card">
+                <${DurationScrollPicker}
+                  label="Daily Work Time"
+                  help="Choose how much total time you are willing to spend working, studying, or completing productive tasks."
+                  value=${routineDraft.preferredDailyWorkloadMinutes}
+                  options=${DURATION_PICKER_OPTIONS}
+                  onChange=${(value) => onRoutineChange("preferredDailyWorkloadMinutes", value)}
+                />
+              </div>
+              <div className="setup-picker-card">
+                <${DurationScrollPicker}
+                  label="Work Interval"
+                  help="Choose how long you prefer to focus on one task before switching or taking a break."
+                  value=${routineDraft.preferredWorkIntervalMinutes}
+                  options=${INTERVAL_PICKER_OPTIONS}
+                  onChange=${(value) => onRoutineChange("preferredWorkIntervalMinutes", value)}
+                />
+              </div>
             </div>
             <div className="setup-timeline-preview">
               <span>${formatTimeLabel(minutesToTimeValue(schedule.wakeMinutes))}</span>
@@ -3833,7 +4024,7 @@ function SetupScheduleBasicsScreen({
             ${canContinue
               ? html`
                   <${motion.div} className="mood-control-row" initial=${{ opacity: 0, y: 10 }} animate=${{ opacity: 1, y: 0 }} exit=${{ opacity: 0, y: 8 }}>
-                    <button type="button" className="primary-button" onClick=${onContinue}>Continue</button>
+                    <button type="button" className="primary-button" onClick=${onContinue}>Finish Setup</button>
                   </${motion.div}>
                 `
               : null}
@@ -3851,9 +4042,9 @@ function SetupRoutineBuilderScreen({
   onRoutineActivityRemove,
   onSaveRoutine,
 }) {
-  const dailyActivities = (routineDraft.dailyActivities || []).length
+  const dailyActivities = Array.isArray(routineDraft.dailyActivities)
     ? routineDraft.dailyActivities
-    : [{ id: "activity-setup-empty", name: "", durationMinutes: "", usualTime: "", days: "Weekdays", fixed: true }];
+    : [];
 
   return html`
     <${motion.section}
@@ -3865,7 +4056,6 @@ function SetupRoutineBuilderScreen({
     >
       <${GraphBackdrop} />
       <div className="relative z-10 mx-auto flex w-full max-w-5xl flex-col items-center gap-5">
-        <${SetupProgress} step=${4} />
         <${motion.div}
           className="mood-panel routine-panel"
           initial=${{ opacity: 0, y: 28 }}
@@ -3873,32 +4063,34 @@ function SetupRoutineBuilderScreen({
           transition=${{ duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
         >
           <div className="mood-heading">
-            <p className="eyebrow">Setup 4 of 4 · Your Routine</p>
-            <h2 className="font-display">Add what already exists.</h2>
+            <p className="eyebrow">Your Routine</p>
+            <h2 className="font-display">Add recurring commitments.</h2>
             <p>Start empty. Add only real commitments VIRELI should plan around.</p>
           </div>
           <div className="daily-activity-list routine-builder-list">
-            ${dailyActivities.map(
-              (activity, index) => html`
-                <div key=${activity.id || `routine-activity-${index}`} className="routine-activity-row routine-builder-row">
-                  <input className="planning-input" value=${activity.name} onInput=${(event) => onRoutineActivityChange(index, "name", event.target.value)} placeholder="School, practice, work..." />
-                  <input className="planning-input" type="number" min="0" inputMode="numeric" value=${activity.durationMinutes} onInput=${(event) => onRoutineActivityChange(index, "durationMinutes", event.target.value)} placeholder="Minutes" />
-                  <input className="planning-input" value=${activity.usualTime} onInput=${(event) => onRoutineActivityChange(index, "usualTime", event.target.value)} placeholder="Start time" />
-                  <select className="planning-input" value=${activity.days || "Weekdays"} onChange=${(event) => onRoutineActivityChange(index, "days", event.target.value)}>
-                    ${ROUTINE_DAY_OPTIONS.map((option) => html`<option key=${option} value=${option}>${option}</option>`)}
-                  </select>
-                  <select className="planning-input" value=${activity.fixed === false ? "Flexible" : "Fixed"} onChange=${(event) => onRoutineActivityChange(index, "fixed", event.target.value === "Fixed")}>
-                    <option value="Fixed">Fixed</option>
-                    <option value="Flexible">Flexible</option>
-                  </select>
-                  <button type="button" className="secondary-button" onClick=${() => onRoutineActivityRemove(index)} disabled=${dailyActivities.length <= 1}>Remove</button>
-                </div>
-              `,
-            )}
+            ${dailyActivities.length
+              ? dailyActivities.map(
+                  (activity, index) => html`
+                    <div key=${activity.id || `routine-activity-${index}`} className="routine-activity-row routine-builder-row">
+                      <input className="planning-input" value=${activity.name} onInput=${(event) => onRoutineActivityChange(index, "name", event.target.value)} placeholder="Practice, workout, work hours..." />
+                      <input className="planning-input" type="number" min="0" inputMode="numeric" value=${activity.durationMinutes} onInput=${(event) => onRoutineActivityChange(index, "durationMinutes", event.target.value)} placeholder="Minutes" />
+                      <input className="planning-input" value=${activity.usualTime} onInput=${(event) => onRoutineActivityChange(index, "usualTime", event.target.value)} placeholder="Start time" />
+                      <select className="planning-input" value=${activity.days || "Weekdays"} onChange=${(event) => onRoutineActivityChange(index, "days", event.target.value)}>
+                        ${ROUTINE_DAY_OPTIONS.map((option) => html`<option key=${option} value=${option}>${option}</option>`)}
+                      </select>
+                      <select className="planning-input" value=${activity.fixed === false ? "Flexible" : "Fixed"} onChange=${(event) => onRoutineActivityChange(index, "fixed", event.target.value === "Fixed")}>
+                        <option value="Fixed">Fixed</option>
+                        <option value="Flexible">Flexible</option>
+                      </select>
+                      <button type="button" className="secondary-button" onClick=${() => onRoutineActivityRemove(index)}>Remove</button>
+                    </div>
+                  `,
+                )
+              : html`<div className="soft-note"><p>No routine items yet. Add one if there is something VIRELI should plan around.</p></div>`}
           </div>
           <div className="card-footer-row">
             <button type="button" className="secondary-button" onClick=${onRoutineActivityAdd} disabled=${dailyActivities.length >= 8}>Add routine</button>
-            <button type="button" className="primary-button" onClick=${onSaveRoutine}>Go to Home</button>
+            <button type="button" className="primary-button" onClick=${onSaveRoutine}>Save routine</button>
           </div>
         </${motion.div}>
       </div>
@@ -3907,55 +4099,19 @@ function SetupRoutineBuilderScreen({
 }
 
 function AccountScreen({
-  profile,
-  googleClientId,
-  googleAuthStatus,
-  googleAuthError,
-  emailAuthStep,
-  emailAuthEmail,
-  emailAuthCode,
-  emailAuthMode,
-  emailAuthStatus,
-  emailAuthError,
-  emailAuthMessage,
-  onEmailChange,
-  onEmailContinue,
-  onEmailCodeChange,
-  onEmailCodeKeyDown,
-  onEmailCodePaste,
-  onEmailVerify,
-  onEmailResend,
-  onEmailUseDifferentEmail,
-  onEmailModeChange,
+  profileDraft,
+  accountPassword,
+  accountPasswordConfirm,
+  accountPasswordVisible,
+  accountError,
+  onProfileDraftChange,
+  onAccountPasswordChange,
+  onAccountPasswordConfirmChange,
+  onAccountPasswordVisibleToggle,
+  onVireliAccountSubmit,
   onContinueAsGuest,
 }) {
-  const googleButtonRef = useRef(null);
-  const codeInputRefs = useRef([]);
-
-  useEffect(() => {
-    if (!googleClientId || !window.google?.accounts?.id || !googleButtonRef.current) {
-      return;
-    }
-
-    googleButtonRef.current.innerHTML = "";
-    window.google.accounts.id.renderButton(googleButtonRef.current, {
-      theme: "outline",
-      size: "large",
-      shape: "pill",
-      text: "signin_with",
-      width: Math.min(460, googleButtonRef.current.clientWidth || 460),
-    });
-  }, [googleClientId, googleAuthStatus]);
-
-  useEffect(() => {
-    if (emailAuthStep === "code") {
-      window.setTimeout(() => codeInputRefs.current[0]?.focus(), 80);
-    }
-  }, [emailAuthStep]);
-
-  const isEmailBusy = emailAuthStatus === "sending" || emailAuthStatus === "verifying" || emailAuthStatus === "resending";
-  const codeDigits = String(emailAuthCode || "").padEnd(EMAIL_AUTH_CODE_LENGTH, " ").slice(0, EMAIL_AUTH_CODE_LENGTH);
-  const cleanCode = codeDigits.replace(/\D/g, "");
+  const canCreateAccount = Boolean(profileDraft.name.trim() && accountPassword && accountPasswordConfirm);
 
   return html`
     <${motion.section}
@@ -3972,169 +4128,88 @@ function AccountScreen({
           animate=${{ opacity: 1, y: 0 }}
           transition=${{ duration: 0.7, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
         >
-          <div className="mood-heading auth-heading">
-            <div className="google-auth-mark" aria-hidden="true">
-              <span>V</span>
+          <div className="mood-heading auth-heading get-started-heading">
+            <div className="get-started-logo-shell">
+              <${VireliLogoMark} animated=${true} />
             </div>
             <p className="google-auth-brand font-display">VIRELI</p>
-            <h2 className="font-display">
-              ${emailAuthStep === "code" ? "Check your email" : "Welcome back"}
-            </h2>
-            ${emailAuthStep === "code"
-              ? html`
-                  <p>We sent a verification code to</p>
-                  <p className="auth-email-display">${emailAuthEmail}</p>
-                `
-              : html`<p>Sign in to continue to Vireli.</p>`}
+            <h2 className="font-display">Create your VIRELI account</h2>
+            <p>Set up a quick VIRELI profile so your planner can feel personal.</p>
           </div>
 
-          ${emailAuthStep === "code"
-            ? html`
-                <form className="email-auth-form" onSubmit=${onEmailVerify}>
-                  <div className="verification-code-row" aria-label="Verification code">
-                    ${Array.from({ length: EMAIL_AUTH_CODE_LENGTH }).map(
-                      (_, index) => html`
-                        <input
-                          key=${index}
-                          ref=${(element) => {
-                            codeInputRefs.current[index] = element;
-                          }}
-                          className="verification-code-box"
-                          value=${/\d/.test(codeDigits[index]) ? codeDigits[index] : ""}
-                          type="text"
-                          inputMode="numeric"
-                          autoComplete=${index === 0 ? "one-time-code" : "off"}
-                          pattern="[0-9]*"
-                          maxLength="1"
-                          aria-label=${`Digit ${index + 1} of ${EMAIL_AUTH_CODE_LENGTH}`}
-                          disabled=${isEmailBusy}
-                          onInput=${(event) => onEmailCodeChange(index, event.target.value)}
-                          onKeyDown=${(event) => onEmailCodeKeyDown(event, index)}
-                          onPaste=${onEmailCodePaste}
-                        />
-                      `,
-                    )}
-                  </div>
-                  <button
-                    type="submit"
-                    className="primary-button auth-primary-button"
-                    disabled=${isEmailBusy || cleanCode.length !== EMAIL_AUTH_CODE_LENGTH}
-                  >
-                    ${emailAuthStatus === "verifying" ? "Verifying..." : "Verify"}
-                  </button>
-                </form>
+          <form className="vireli-account-form" onSubmit=${onVireliAccountSubmit}>
+            <label className="field-stack">
+              <span>Username</span>
+              <input
+                className="planning-input auth-email-input"
+                type="text"
+                value=${profileDraft.name}
+                onInput=${(event) => onProfileDraftChange("name", event.target.value)}
+                placeholder="Choose a username"
+                autoComplete="username"
+              />
+            </label>
+            <label className="field-stack password-field-stack">
+              <span>Create password</span>
+              <div className="password-input-wrap">
+                <input
+                  className="planning-input auth-email-input"
+                  type=${accountPasswordVisible ? "text" : "password"}
+                  value=${accountPassword}
+                  onInput=${(event) => onAccountPasswordChange(event.target.value)}
+                  placeholder="Create password"
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  className="password-visibility-button"
+                  aria-label=${accountPasswordVisible ? "Hide password" : "Show password"}
+                  onClick=${onAccountPasswordVisibleToggle}
+                >
+                  ${accountPasswordVisible ? "Hide" : "Show"}
+                </button>
+              </div>
+            </label>
+            <label className="field-stack password-field-stack">
+              <span>Confirm password</span>
+              <div className="password-input-wrap">
+                <input
+                  className="planning-input auth-email-input"
+                  type=${accountPasswordVisible ? "text" : "password"}
+                  value=${accountPasswordConfirm}
+                  onInput=${(event) => onAccountPasswordConfirmChange(event.target.value)}
+                  placeholder="Confirm password"
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  className="password-visibility-button"
+                  aria-label=${accountPasswordVisible ? "Hide password" : "Show password"}
+                  onClick=${onAccountPasswordVisibleToggle}
+                >
+                  ${accountPasswordVisible ? "Hide" : "Show"}
+                </button>
+              </div>
+            </label>
+            ${accountError ? html`<p className="auth-inline-error">${accountError}</p>` : null}
 
-                <div className="email-auth-link-row">
-                  <button
-                    type="button"
-                    className="auth-text-button"
-                    disabled=${isEmailBusy}
-                    onClick=${onEmailResend}
-                  >
-                    ${emailAuthStatus === "resending" ? "Sending..." : "Didn’t receive a code? Resend code"}
-                  </button>
-                  <button
-                    type="button"
-                    className="auth-text-button"
-                    disabled=${isEmailBusy}
-                    onClick=${onEmailUseDifferentEmail}
-                  >
-                    Use a different email
-                  </button>
-                </div>
-              `
-            : html`
-                <form className="email-auth-form" onSubmit=${onEmailContinue}>
-                  <label className="field-stack">
-                    <span>Email address</span>
-                    <input
-                      className="planning-input auth-email-input"
-                      value=${emailAuthEmail}
-                      onInput=${(event) => onEmailChange(event.target.value)}
-                      placeholder="student@example.com"
-                      type="email"
-                      inputMode="email"
-                      autoComplete="email"
-                      disabled=${isEmailBusy}
-                    />
-                  </label>
-                  <button
-                    type="submit"
-                    className="primary-button auth-primary-button"
-                    disabled=${isEmailBusy || !emailAuthEmail.trim()}
-                  >
-                    ${emailAuthStatus === "sending" ? "Sending code..." : "Continue"}
-                  </button>
-                </form>
+            <button
+              type="submit"
+              className="primary-button auth-primary-button get-started-button"
+              disabled=${!canCreateAccount}
+            >
+              Create account
+            </button>
+          </form>
 
-                <p className="email-auth-create">
-                  ${emailAuthMode === "signup" ? "Already have an account?" : "Don’t have an account?"}
-                  <button
-                    type="button"
-                    className="auth-text-button"
-                    disabled=${isEmailBusy}
-                    onClick=${() => onEmailModeChange(emailAuthMode === "signup" ? "signin" : "signup")}
-                  >
-                    ${emailAuthMode === "signup" ? "Sign in" : "Create account"}
-                  </button>
-                </p>
-              `}
-
-          ${emailAuthError
-            ? html`<p className="google-auth-error">${emailAuthError}</p>`
-            : null}
-          ${emailAuthMessage
-            ? html`<p className="email-auth-message">${emailAuthMessage}</p>`
-            : null}
-
-          <div className="google-auth-divider">
-            <span></span>
-            <small>or</small>
-            <span></span>
-          </div>
-
-          <div className="google-auth-provider-shell">
-            ${googleClientId
-              ? html`
-                  <div
-                    ref=${googleButtonRef}
-                    className="google-identity-button-slot"
-                    aria-label="Sign in with Google"
-                  ></div>
-                  <p className="google-auth-status">
-                    ${googleAuthStatus === "verifying"
-                      ? "Checking your Google sign-in..."
-                      : googleAuthStatus === "ready"
-                      ? "Use your Google account instead."
-                      : "Preparing Google sign-in..."}
-                  </p>
-                `
-              : html`
-                  <div className="google-auth-config-notice">
-                    Google sign-in needs a Google web client ID on the local server.
-                  </div>
-                `}
-            ${googleAuthError
-              ? html`<p className="google-auth-error">${googleAuthError}</p>`
-              : null}
-          </div>
-
-          <div className="google-auth-divider">
-            <span></span>
-            <small>or</small>
-            <span></span>
-          </div>
-
-          <div className="mood-control-row google-auth-actions">
-            <button type="button" className="secondary-button auth-secondary-button" onClick=${onContinueAsGuest}>
+          <div className="vireli-account-secondary">
+            <button type="button" className="text-link-button account-guest-button" onClick=${onContinueAsGuest}>
               Continue as guest
             </button>
           </div>
 
-          <p className="privacy-note">
-            ${profile.connected
-              ? "Signed in. VIRELI stores only basic profile info."
-              : "VIRELI sends a one-time code to your email. Google sign-in stays separate when configured."}
+          <p className="account-privacy-note">
+            Your VIRELI Account is local to this device for now.
           </p>
         </${motion.div}>
       </div>
@@ -4146,6 +4221,7 @@ function RoutineSetupScreen({
   routineDraft,
   onRoutineChange,
   onRoutineWorkloadSelect,
+  onRoutineIntervalSelect,
   onRoutineActivityChange,
   onRoutineActivityAdd,
   onRoutineActivityRemove,
@@ -4472,6 +4548,7 @@ function RoutineTab({
   calendarTasks,
   onRoutineChange,
   onRoutineWorkloadSelect,
+  onRoutineIntervalSelect,
   onRoutineActivityChange,
   onRoutineActivityAdd,
   onRoutineActivityRemove,
@@ -4488,7 +4565,6 @@ function RoutineTab({
   const busyMinutes = schedule.timelineBlocks
     .filter((block) => block.source !== "free")
     .reduce((total, block) => total + block.endMinutes - block.startMinutes, 0);
-  const workloadLabel = getDayWorkloadLabel({ routine, homeworkItems, calendarTasks });
   const canSave = Boolean(routineDraft.wakeTime && routineDraft.bedTime && routineDraft.preferredDailyWorkloadMinutes);
   const routineItems = (routine.dailyActivities || []).filter((item) => item.name);
 
@@ -4540,7 +4616,7 @@ function RoutineTab({
         </article>
 
         <article className="feature-card routine-summary-card">
-          <p className="eyebrow">${workloadLabel} day</p>
+          <p className="eyebrow">Routine summary</p>
           <h3 className="font-display">${formatDurationFromMinutes(schedule.freeMinutes)} free today</h3>
           <div className="routine-summary-stats">
             <span><strong>${formatDurationFromMinutes(busyMinutes)}</strong><small>scheduled</small></span>
@@ -4549,11 +4625,9 @@ function RoutineTab({
             <span><strong>${(routine.dailyActivities || []).filter((item) => item.name).length}</strong><small>commitments</small></span>
           </div>
           <p>
-            ${workloadLabel === "Overloaded"
-              ? "Today looks tight. VIRELI should protect the most important deadline and move what can wait."
-              : largestWindow
-                ? `Your best open window is ${largestWindow.label}.`
-                : "Your day is mostly committed right now."}
+            ${largestWindow
+              ? `Your best open window is ${largestWindow.label}.`
+              : "Your day is mostly committed right now."}
           </p>
         </article>
 
@@ -4573,7 +4647,7 @@ function RoutineTab({
             </div>
 
             <div className="field-stack">
-              <span>Preferred daily workload</span>
+              <span>Preferred daily workload hours</span>
               <div className="workload-choice-grid">
                 ${WORKLOAD_OPTIONS.map(
                   (option) => html`
@@ -4598,6 +4672,38 @@ function RoutineTab({
                       inputMode="numeric"
                       value=${routineDraft.preferredDailyWorkloadMinutes}
                       onInput=${(event) => onRoutineChange("preferredDailyWorkloadMinutes", event.target.value)}
+                      placeholder="Minutes"
+                    />
+                  `
+                : null}
+            </div>
+
+            <div className="field-stack">
+              <span>Preferred work interval</span>
+              <div className="workload-choice-grid">
+                ${WORK_INTERVAL_OPTIONS.map(
+                  (option) => html`
+                    <button
+                      key=${option.id}
+                      type="button"
+                      className=${cx("choice-chip workload-choice", routineDraft.preferredWorkIntervalLabel === option.label && "is-selected")}
+                      onClick=${() => onRoutineIntervalSelect(option)}
+                    >
+                      ${option.label}
+                    </button>
+                  `,
+                )}
+              </div>
+              ${routineDraft.preferredWorkIntervalLabel === "Custom"
+                ? html`
+                    <input
+                      className="planning-input"
+                      type="number"
+                      min="10"
+                      step="5"
+                      inputMode="numeric"
+                      value=${routineDraft.preferredWorkIntervalMinutes}
+                      onInput=${(event) => onRoutineChange("preferredWorkIntervalMinutes", event.target.value)}
                       placeholder="Minutes"
                     />
                   `
@@ -4850,6 +4956,8 @@ function HomeTab({
   const tomorrowPreview = getTomorrowPreview({ homeworkItems, calendarTasks, routine });
   const starterTasks = getStarterTasks(profile.primaryUse);
   const isNewerUser = homeworkItems.length + calendarTasks.length + (routine.dailyActivities || []).filter((item) => item.name).length < 3;
+  const starterTargetTab = profile.primaryUse === "School" ? "assignments" : "tasks";
+  const recommendationFactors = getRecommendationFactors({ item: nextItem, recommendation, routine, mood: moodSelection });
 
   return html`
     <${motion.section}
@@ -4863,9 +4971,9 @@ function HomeTab({
       <div className="tab-heading home-heading">
         <div>
           <p className="eyebrow">${getTimeGreeting()}, ${getFirstName(profile)}</p>
-          <h1 className="font-display">What should I do right now?</h1>
+          <h1 className="font-display">What should I do next?</h1>
           <p className="tab-heading-lead">
-            VIRELI looks at assignments, routines, and open time to choose the next useful step.
+            VIRELI uses your assignments, routine, mood, and real open time to choose one useful next step.
           </p>
         </div>
         <span className="date-chip free-hours-chip">${freeWindows[0] ? `${freeWindows[0].label} open` : "No open window right now"}</span>
@@ -4906,6 +5014,16 @@ function HomeTab({
                   <span>${nextItem.dueDate ? `Due ${formatShortDate(nextItem.dueDate)}` : "No due date"}</span>
                   <span>${nextWindow ? `Best window: ${nextWindow.label}` : "No free window found"}</span>
                 </div>
+                <details className="why-this-panel">
+                  <summary>Why this?</summary>
+                  ${recommendationFactors.length
+                    ? html`
+                        <ul>
+                          ${recommendationFactors.map((factor) => html`<li key=${factor}>${factor}</li>`)}
+                        </ul>
+                      `
+                    : html`<p>VIRELI chose this from the schedule data saved in your planner.</p>`}
+                </details>
                 <div className="card-footer-row next-task-actions">
                   <button type="button" className="primary-button" onClick=${() => onTabChange("calendar")}>Start</button>
                   <button type="button" className="secondary-button" onClick=${() => onHomeworkCompleteToggle(nextItem.id)}>Done</button>
@@ -5043,7 +5161,7 @@ function HomeTab({
                     <span>${block.timeLabel.split(" - ")[1] || ""}</span>
                   </div>
                   <div className="timeline-content">
-                    <span className="timeline-source">${block.source === "free" ? "Free" : block.source}</span>
+                    <span className="timeline-source">${block.sourceLabel || getScheduleSourceLabel(block.source, block)}</span>
                     <p>${block.title}</p>
                     <small>${block.durationLabel}</small>
                   </div>
@@ -5106,7 +5224,7 @@ function HomeTab({
                 <div className="starter-task-row">
                   ${starterTasks.map((task) => html`<span key=${task} className="step-chip">${task}</span>`)}
                 </div>
-                <button type="button" className="secondary-button" onClick=${() => onTabChange("assignments")}>
+                <button type="button" className="secondary-button" onClick=${() => onTabChange(starterTargetTab)}>
                   Add first item
                 </button>
               </article>
@@ -5386,6 +5504,194 @@ function PlanTodayTab({
   `;
 }
 
+function ModeItemsTab({
+  mode,
+  itemType,
+  calendarTasks,
+  calendarTaskDraft,
+  editingCalendarTaskId,
+  selectedDate,
+  onCalendarTaskDraftChange,
+  onModeItemSubmit,
+  onCalendarTaskEdit,
+  onCalendarTaskCancelEdit,
+  onCalendarTaskToggle,
+  onCalendarTaskDelete,
+}) {
+  const isMeeting = itemType === "Meeting";
+  const visibleItems = calendarTasks
+    .filter((item) => (item.itemType || item.type || "Task") === itemType)
+    .sort((a, b) => `${a.scheduledDate || "9999-12-31"} ${a.scheduledTime || ""}`.localeCompare(`${b.scheduledDate || "9999-12-31"} ${b.scheduledTime || ""}`));
+  const pageTitle = isMeeting ? "Meetings" : "Tasks";
+  const pageLead = isMeeting
+    ? "Work meetings reserve time so VIRELI does not schedule tasks over them."
+    : mode === "School"
+      ? "Personal responsibilities stay separate from school assignments."
+      : "Add what you need to accomplish. VIRELI will fit it around your schedule.";
+
+  return html`
+    <${motion.section}
+      key=${itemType.toLowerCase()}
+      className="tab-view"
+      initial=${{ opacity: 0, y: 20 }}
+      animate=${{ opacity: 1, y: 0 }}
+      exit=${{ opacity: 0, y: -16 }}
+      transition=${{ duration: 0.35 }}
+    >
+      <div className="tab-heading">
+        <div>
+          <p className="eyebrow">${mode} mode</p>
+          <h1 className="font-display">${pageTitle}</h1>
+          <p className="tab-heading-lead">${pageLead}</p>
+        </div>
+      </div>
+
+      <div className="daily-grid">
+        <article className="feature-card feature-card-support plan-builder-card">
+          <div className="card-topline card-topline-simple">
+            <span className="mood-chip">${editingCalendarTaskId ? "Edit" : isMeeting ? "+ Add Meeting" : "+ Add Task"}</span>
+          </div>
+          <h3 className="font-display section-title-lg">${editingCalendarTaskId ? `Edit ${itemType.toLowerCase()}` : `Add ${itemType.toLowerCase()}`}</h3>
+          <form className="calendar-add-form" onSubmit=${(event) => onModeItemSubmit(itemType, event)}>
+            <div className="homework-form-grid">
+              <label className="field-stack">
+                <span>${isMeeting ? "Meeting name" : "Task name"}</span>
+                <input
+                  className="planning-input"
+                  value=${calendarTaskDraft.title}
+                  onInput=${(event) => onCalendarTaskDraftChange("title", event.target.value)}
+                  placeholder=${isMeeting ? "Team meeting" : "Practice piano"}
+                />
+              </label>
+              <label className="field-stack">
+                <span>${isMeeting ? "Date" : "Date or deadline"}</span>
+                <input
+                  className="planning-input"
+                  type="date"
+                  value=${calendarTaskDraft.scheduledDate || selectedDate}
+                  onInput=${(event) => onCalendarTaskDraftChange("scheduledDate", event.target.value)}
+                />
+              </label>
+              <label className="field-stack">
+                <span>Preferred time</span>
+                <input
+                  className="planning-input"
+                  type="time"
+                  value=${calendarTaskDraft.scheduledTime}
+                  onInput=${(event) => onCalendarTaskDraftChange("scheduledTime", event.target.value)}
+                />
+              </label>
+              <label className="field-stack">
+                <span>Estimated duration</span>
+                <input
+                  className="planning-input"
+                  type="number"
+                  min="5"
+                  step="5"
+                  inputMode="numeric"
+                  value=${calendarTaskDraft.durationMinutes}
+                  onInput=${(event) => onCalendarTaskDraftChange("durationMinutes", event.target.value)}
+                  placeholder="30"
+                />
+              </label>
+              <label className="field-stack">
+                <span>Priority</span>
+                <select
+                  className="planning-input"
+                  value=${calendarTaskDraft.priority}
+                  onChange=${(event) => onCalendarTaskDraftChange("priority", event.target.value)}
+                >
+                  ${["Low", "Normal", "High", "Urgent"].map((option) => html`<option key=${option} value=${option}>${option}</option>`)}
+                </select>
+              </label>
+              <label className="field-stack">
+                <span>Recurrence</span>
+                <select
+                  className="planning-input"
+                  value=${calendarTaskDraft.frequency}
+                  onChange=${(event) => onCalendarTaskDraftChange("frequency", event.target.value)}
+                >
+                  ${PLAN_FREQUENCY_OPTIONS.map((option) => html`<option key=${option} value=${option}>${option}</option>`)}
+                </select>
+              </label>
+            </div>
+            ${isMeeting
+              ? html`
+                  <textarea
+                    className="planning-input compact-textarea"
+                    value=${calendarTaskDraft.notes}
+                    onInput=${(event) => onCalendarTaskDraftChange("notes", event.target.value)}
+                    rows="3"
+                    placeholder="Location, call link, or notes."
+                  ></textarea>
+                `
+              : null}
+            <label className="settings-toggle-row calendar-toggle-row">
+              <input
+                type="checkbox"
+                checked=${calendarTaskDraft.fixed}
+                onChange=${(event) => {
+                  onCalendarTaskDraftChange("fixed", event.target.checked);
+                  onCalendarTaskDraftChange("flexible", !event.target.checked);
+                }}
+              />
+              <span>${isMeeting ? "Fixed meeting time" : "Fixed time"}</span>
+            </label>
+            <div className="card-footer-row">
+              <span>${isMeeting ? "Meetings block availability automatically." : "Flexible tasks can move when VIRELI needs to rebalance your day."}</span>
+              <div className="calendar-form-actions">
+                ${editingCalendarTaskId
+                  ? html`<button type="button" className="secondary-button" onClick=${onCalendarTaskCancelEdit}>Cancel edit</button>`
+                  : null}
+                <button type="submit" className="primary-button" disabled=${!calendarTaskDraft.title.trim()}>
+                  ${editingCalendarTaskId ? "Save changes" : `Add ${itemType.toLowerCase()}`}
+                </button>
+              </div>
+            </div>
+          </form>
+        </article>
+
+        <article className="feature-card feature-card-quote-wide">
+          <h3 className="font-display">${pageTitle}</h3>
+          ${visibleItems.length
+            ? html`
+                <div className="selected-day-list">
+                  ${visibleItems.map(
+                    (item) => html`
+                      <div key=${item.id} className=${cx("selected-day-item", isMeeting ? "is-meeting" : "is-task", item.completed && "is-complete")}>
+                        <div>
+                          <strong>${item.title}</strong>
+                          <span>${[
+                            item.scheduledDate ? formatShortDate(item.scheduledDate) : "",
+                            item.scheduledTime ? formatTimeLabel(item.scheduledTime) : "",
+                            getFrequencyLabel(item.frequency),
+                            item.durationMinutes ? formatDurationFromMinutes(Number(item.durationMinutes)) : "",
+                            item.fixed ? "Fixed" : "Flexible",
+                          ].filter(Boolean).join(" · ")}</span>
+                        </div>
+                        <div className="calendar-detail-actions">
+                          <button type="button" className="secondary-button" onClick=${() => onCalendarTaskToggle(item.id)}>
+                            ${item.completed ? "Reopen" : "Done"}
+                          </button>
+                          <button type="button" className="secondary-button" onClick=${() => onCalendarTaskEdit(item.id)}>
+                            Edit
+                          </button>
+                          <button type="button" className="secondary-button" onClick=${() => onCalendarTaskDelete(item.id)}>
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    `,
+                  )}
+                </div>
+              `
+            : html`<p>No ${pageTitle.toLowerCase()} yet.</p>`}
+        </article>
+      </div>
+    </${motion.section}>
+  `;
+}
+
 function DailyLogTab({
   timeMode,
   dailyLogDraft,
@@ -5399,6 +5705,7 @@ function DailyLogTab({
   onDailyActivityRemove,
   onDailyActivitiesLockToggle,
   onDailyLogSubmit,
+  onDailyLogDelete,
   onThoughtDraftChange,
   onThoughtAdd,
   onThoughtUpdate,
@@ -5436,7 +5743,7 @@ function DailyLogTab({
             <span className="micro-badge">Today</span>
           </div>
           <h3 className="font-display section-title-lg">What’s on your mind?</h3>
-          <p>Thoughts do not become tasks until you choose what to do with them.</p>
+          <p className="privacy-note-light">Private to this device unless you choose to turn a thought into a task.</p>
 
           <form className="thought-form" onSubmit=${onThoughtAdd}>
             <label className="field-stack">
@@ -5516,7 +5823,7 @@ function DailyLogTab({
             <span className="micro-badge">Previous entries</span>
           </div>
           <h3 className="font-display section-title-lg">Search and review</h3>
-          <p>Saved logs stay available here while quick thoughts stay easy to organize.</p>
+          <p className="privacy-note-light">Saved logs stay local and manageable. Delete any entry you no longer want here.</p>
           <div className="history-list">
             ${dailyLogs.length
               ? dailyLogs.slice(0, 6).map(
@@ -5528,6 +5835,13 @@ function DailyLogTab({
                       </summary>
                       <div className="history-messages">
                         <p>${(log.activities || []).filter(Boolean).join(", ") || log.highlight || "No entry text saved."}</p>
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick=${() => onDailyLogDelete(log.id)}
+                        >
+                          Delete entry
+                        </button>
                       </div>
                     </details>
                   `,
@@ -5566,6 +5880,7 @@ function CalendarTab({
   routine,
   onCalendarTaskDraftChange,
   onCalendarTaskSubmit,
+  onModeItemSubmit,
   onCalendarTaskEdit,
   onCalendarTaskCancelEdit,
   onCalendarMonthChange,
@@ -5586,6 +5901,7 @@ function CalendarTab({
       ...item,
       calendarId: `homework:${item.id}`,
       source: "homework",
+      sourceLabel: "Assignment",
       subject: item.classLabel || (item.classId ? getClassLabel(savedClasses, item.classId, "") : item.type || "Plan"),
       calendarDate: item.dueDate || item.scheduledDate || "",
       scheduledDate: item.scheduledDate || "",
@@ -5595,6 +5911,7 @@ function CalendarTab({
       ...task,
       calendarId: `task:${task.id}`,
       source: "task",
+      sourceLabel: getScheduleSourceLabel("task", task),
       subject: task.subject || "Personal",
       calendarDate: task.scheduledDate || task.dueDate || "",
     })),
@@ -5682,7 +5999,7 @@ function CalendarTab({
                   value=${calendarTaskDraft.itemType}
                   onChange=${(event) => onCalendarTaskDraftChange("itemType", event.target.value)}
                 >
-                  ${HOMEWORK_TYPE_OPTIONS.map((option) => html`<option key=${option} value=${option}>${option}</option>`)}
+                  ${CALENDAR_ITEM_TYPE_OPTIONS.map((option) => html`<option key=${option} value=${option}>${option}</option>`)}
                 </select>
               </label>
               <label className="field-stack">
@@ -5808,7 +6125,7 @@ function CalendarTab({
                       <div key=${item.id} className=${cx("selected-day-item", `is-${item.source}`)}>
                         <div>
                           <strong>${item.title}</strong>
-                          <span>${[item.timeLabel, item.durationLabel, item.subject].filter(Boolean).join(" · ")}</span>
+                          <span>${[item.sourceLabel, item.timeLabel, item.durationLabel, item.subject].filter(Boolean).join(" · ")}</span>
                         </div>
                         ${item.source === "plan" || item.source === "calendar"
                           ? html`
@@ -5872,6 +6189,7 @@ function CalendarTab({
                         <div>
                           <strong>${item.title}</strong>
                           <span>${[
+                            item.sourceLabel,
                             item.subject,
                             item.allDay ? "All day" : item.scheduledTime ? formatTimeLabel(item.scheduledTime) : "",
                             getFrequencyLabel(item.frequency),
@@ -5935,7 +6253,7 @@ function CalendarTab({
                         <div key=${`day-${item.id}`} className=${cx("selected-day-item", `is-${item.source}`)}>
                           <div>
                             <strong>${item.title}</strong>
-                            <span>${item.timeLabel} · ${item.durationLabel}</span>
+                            <span>${item.sourceLabel} · ${item.timeLabel} · ${item.durationLabel}</span>
                           </div>
                         </div>
                       `,
@@ -5994,7 +6312,7 @@ function CalendarTab({
                                   key=${item.calendarId}
                                   className=${cx("month-event-chip", item.completed && "is-complete")}
                                 >
-                                  ${item.subject}: ${item.title}
+                                  ${item.sourceLabel || item.subject}: ${item.title}
                                 </span>
                               `,
                             )}
@@ -6016,6 +6334,7 @@ function CalendarTab({
 function AskVireliTab({
   messages,
   recentAskHistory,
+  promptChips,
   chatDraft,
   isTyping,
   chatError,
@@ -6056,9 +6375,28 @@ function AskVireliTab({
             <p className="eyebrow">Scheduling helper</p>
             <h2 className="font-display">Type a task and VIRELI will find an opening.</h2>
             <p>
-              Try “Study science,” “Practice piano,” or “Finish my math worksheet.”
+              Suggestions below update from your routine, deadlines, and saved plans.
             </p>
           </div>
+          ${promptChips?.length
+            ? html`
+                <div className="ask-prompt-chip-row" aria-label="Contextual Ask VIRELI prompts">
+                  ${promptChips.map(
+                    (chip) => html`
+                      <button
+                        key=${chip}
+                        type="button"
+                        className="ask-prompt-chip"
+                        onClick=${() => onChatDraftChange(chip)}
+                        disabled=${isTyping}
+                      >
+                        ${chip}
+                      </button>
+                    `,
+                  )}
+                </div>
+              `
+            : null}
 
           <div className="message-scroll">
             ${messages.map(
@@ -6163,6 +6501,24 @@ function ImproveTab({
           Pick the area, then write what should be better.
         </p>
 
+        <div className="quick-feedback-grid" aria-label="Quick feedback options">
+          ${FEEDBACK_QUICK_OPTIONS.map(
+            (option) => html`
+              <button
+                key=${option}
+                type="button"
+                className=${cx("choice-chip quick-feedback-chip", feedbackDraft.text === option && "is-selected")}
+                onClick=${() => {
+                  onFeedbackAreaChange("Scheduling problem");
+                  onFeedbackChange(option);
+                }}
+              >
+                ${option}
+              </button>
+            `,
+          )}
+        </div>
+
         ${feedbackSubmitted
           ? html`
               <div className="status-banner status-banner-soft">
@@ -6217,14 +6573,20 @@ function SettingsTab({
   calendarPreferences,
   profile,
   profileDraft,
+  routineDraft,
   onClassDraftChange,
   onClassAdd,
   onClassUpdate,
   onClassRemove,
   onProfileDraftChange,
-  onAccountSubmit,
+  onSaveProfileSettings,
   onDisconnectProfile,
   onCalendarPreferenceChange,
+  onRoutineChange,
+  onRoutineWorkloadSelect,
+  onRoutineIntervalSelect,
+  onSaveRoutine,
+  onSchedulingPreferenceChange,
   onTabChange,
 }) {
   return html`
@@ -6246,10 +6608,10 @@ function SettingsTab({
       <div className="settings-list">
         <details className="settings-list-row" open>
           <summary>
-            <span>Create an Account</span>
+            <span>Account & Security</span>
             <small>
               ${profile.connected
-                ? profile.email || "Local account"
+                ? profile.name || "Local account"
                 : profile.guest
                   ? "Guest mode"
                   : "Optional"}
@@ -6258,30 +6620,19 @@ function SettingsTab({
           <div className="settings-row-body">
             <p>
               ${profile.connected
-                ? `Signed in locally as ${profile.name || profile.email || "VIRELI user"}.`
+                ? `Signed in locally as ${profile.name || "VIRELI user"}. Your password is not shown here.`
                 : profile.guest
                   ? "Using VIRELI as a guest on this device."
-                  : "Account connection is optional. You can use VIRELI without signing in."}
+                  : "A VIRELI Account is a quick local profile for personalization."}
             </p>
             <div className="profile-form">
               <label className="field-stack">
-                <span>Email</span>
+                <span>Display name</span>
                 <input
                   className="planning-input"
-                  value=${profileDraft.email}
-                  onInput=${(event) => onProfileDraftChange("email", event.target.value)}
-                  placeholder="you@gmail.com"
-                  type="email"
-                />
-              </label>
-              <label className="field-stack">
-                <span>Password</span>
-                <input
-                  className="planning-input"
-                  value=${profileDraft.password}
-                  onInput=${(event) => onProfileDraftChange("password", event.target.value)}
-                  placeholder="Password"
-                  type="password"
+                  value=${profileDraft.name}
+                  onInput=${(event) => onProfileDraftChange("name", event.target.value)}
+                  placeholder="Your name"
                 />
               </label>
             </div>
@@ -6289,10 +6640,10 @@ function SettingsTab({
               <button
                 type="button"
                 className="secondary-button"
-                onClick=${(event) => onAccountSubmit(event, "signin")}
-                disabled=${!profileDraft.email.trim() || !profileDraft.password.trim()}
+                onClick=${onSaveProfileSettings}
+                disabled=${!profileDraft.name.trim()}
               >
-                Save sign in
+                Save profile
               </button>
               <button
                 type="button"
@@ -6303,6 +6654,39 @@ function SettingsTab({
                 Disconnect
               </button>
             </div>
+          </div>
+        </details>
+
+        <details className="settings-list-row">
+          <summary>
+            <span>Mode</span>
+            <small>${profile.primaryUse || "School"}</small>
+          </summary>
+          <div className="settings-row-body">
+            <p>Mode changes VIRELI’s pages and terminology without deleting hidden data.</p>
+            <div className="setup-choice-grid">
+              ${PRIMARY_USE_OPTIONS.map(
+                (option) => html`
+                  <button
+                    key=${option}
+                    type="button"
+                    className=${cx("mood-choice setup-choice", (profileDraft.primaryUse || profile.primaryUse) === option && "is-selected")}
+                    aria-pressed=${(profileDraft.primaryUse || profile.primaryUse) === option}
+                    onClick=${() => onProfileDraftChange("primaryUse", option)}
+                  >
+                    <span className="mood-choice-label">${option}</span>
+                  </button>
+                `,
+              )}
+            </div>
+            <button
+              type="button"
+              className="primary-button"
+              onClick=${onSaveProfileSettings}
+              disabled=${!profileDraft.primaryUse}
+            >
+              Save mode
+            </button>
           </div>
         </details>
 
@@ -6391,25 +6775,56 @@ function SettingsTab({
         <details className="settings-list-row">
           <summary>
             <span>Scheduling</span>
-            <small>Workload limits</small>
+            <small>${routineDraft.preferredDailyWorkloadMinutes ? formatDurationFromMinutes(Number(routineDraft.preferredDailyWorkloadMinutes)) : "Set limits"}</small>
           </summary>
           <div className="settings-row-body">
-            <p>Preferred workload, wake time, bedtime, and fixed commitments live in Your Routine so VIRELI can schedule from one source of truth.</p>
-            <button type="button" className="secondary-button" onClick=${() => onTabChange("routine")}>
-              Open Your Routine
-            </button>
+            <p>These preferences help VIRELI suggest realistic blocks without filling every open minute.</p>
+            <div className="field-stack">
+              <${DurationScrollPicker}
+                label="Preferred daily workload hours"
+                value=${routineDraft.preferredDailyWorkloadMinutes}
+                options=${DURATION_PICKER_OPTIONS}
+                onChange=${(value) => onRoutineChange("preferredDailyWorkloadMinutes", value)}
+              />
+            </div>
+            <div className="field-stack">
+              <${DurationScrollPicker}
+                label="Preferred work interval"
+                value=${routineDraft.preferredWorkIntervalMinutes}
+                options=${INTERVAL_PICKER_OPTIONS}
+                onChange=${(value) => onRoutineChange("preferredWorkIntervalMinutes", value)}
+              />
+            </div>
+            <label className="field-stack">
+              <span>Mood influence strength</span>
+              <select
+                className="planning-input"
+                value=${profile.schedulingPreferences?.moodInfluenceStrength || "Medium"}
+                onChange=${(event) => onSchedulingPreferenceChange("moodInfluenceStrength", event.target.value)}
+              >
+                ${["Off", "Light", "Medium", "Strong"].map((option) => html`<option key=${option} value=${option}>${option}</option>`)}
+              </select>
+            </label>
+            <div className="settings-action-row">
+              <button type="button" className="primary-button" onClick=${onSaveRoutine}>
+                Save scheduling preferences
+              </button>
+              <button type="button" className="secondary-button" onClick=${() => onTabChange("routine")}>
+                Open Your Routine
+              </button>
+            </div>
           </div>
         </details>
 
         <details className="settings-list-row">
           <summary>
-            <span>Privacy</span>
+            <span>Privacy & Data</span>
             <small>Local storage</small>
           </summary>
           <div className="settings-row-body">
-            <p>VIRELI keeps profile, routine, classes, logs, chats, and calendar data on this device in local storage.</p>
+            <p>VIRELI stores your schedule, mood check-ins, routine, Daily Log, and personalization data on this device so planning can keep working between visits.</p>
             <div className="soft-note">
-              <p>Google sign-in works when the local server has a Google web client ID. Calendar and Gmail sync are still not active.</p>
+              <p>VIRELI keeps the visible account flow simple and does not connect to outside calendars or inboxes.</p>
             </div>
           </div>
         </details>
@@ -6420,7 +6835,7 @@ function SettingsTab({
             <small>Automatic</small>
           </summary>
           <div className="settings-row-body">
-            <p>VIRELI automatically adjusts its atmosphere by time of day and mood check-in.</p>
+            <p>VIRELI keeps a consistent red-and-white look. Mood changes recommendations, not the visual theme.</p>
             <label className="settings-toggle-row">
               <input
                 type="checkbox"
@@ -6520,10 +6935,12 @@ function DashboardShell({
   onCalendarMonthChange,
   onCalendarViewChange,
   onSelectedCalendarDateChange,
+  onModeItemSubmit,
   onCalendarTaskToggle,
   onCalendarTaskDelete,
   onRoutineChange,
   onRoutineWorkloadSelect,
+  onRoutineIntervalSelect,
   onRoutineActivityChange,
   onRoutineActivityAdd,
   onRoutineActivityRemove,
@@ -6533,7 +6950,7 @@ function DashboardShell({
   onClassUpdate,
   onClassRemove,
   onProfileDraftChange,
-  onAccountSubmit,
+  onSaveProfileSettings,
   onDisconnectProfile,
   onLoadAskHistory,
   onChatDraftChange,
@@ -6548,6 +6965,7 @@ function DashboardShell({
   onDailyActivityRemove,
   onDailyActivitiesLockToggle,
   onDailyLogSubmit,
+  onDailyLogDelete,
   onThoughtDraftChange,
   onThoughtAdd,
   onThoughtUpdate,
@@ -6560,12 +6978,17 @@ function DashboardShell({
   onClearDailyLogs,
   onResetSubjects,
   onCalendarPreferenceChange,
+  onSchedulingPreferenceChange,
 }) {
   let activeView = null;
+  const primaryUse = profile.primaryUse || profileDraft.primaryUse || "School";
+  const primaryNavItems = getPrimaryNavItems(primaryUse);
+  const mobileNavItems = getMobileNavItems(primaryUse);
   const topSchedule = getTodayScheduleBlocks({ routine, homeworkItems, calendarTasks });
   const pageLabel = NAV_ITEMS.find((item) => item.id === activeTab)?.label || "Home";
   const intelligentStatus = getIntelligentStatus({ routine, homeworkItems, calendarTasks, savedClasses });
   const notifications = getNotifications({ routine, homeworkItems, calendarTasks });
+  const askPromptChips = getAskPromptChips({ routine, homeworkItems, calendarTasks, mood: moodSelection, primaryUse });
 
   if (activeTab === "home") {
     activeView = html`
@@ -6597,6 +7020,40 @@ function DashboardShell({
         onHomeworkCompleteToggle=${onHomeworkCompleteToggle}
         onHomeworkDelete=${onHomeworkDelete}
         onPlanNotificationDismiss=${onPlanNotificationDismiss}
+      />
+    `;
+  } else if (activeTab === "tasks") {
+    activeView = html`
+      <${ModeItemsTab}
+        mode=${primaryUse}
+        itemType="Task"
+        calendarTasks=${calendarTasks}
+        calendarTaskDraft=${calendarTaskDraft}
+        editingCalendarTaskId=${editingCalendarTaskId}
+        selectedDate=${selectedCalendarDate}
+        onCalendarTaskDraftChange=${onCalendarTaskDraftChange}
+        onModeItemSubmit=${onModeItemSubmit}
+        onCalendarTaskEdit=${onCalendarTaskEdit}
+        onCalendarTaskCancelEdit=${onCalendarTaskCancelEdit}
+        onCalendarTaskToggle=${onCalendarTaskToggle}
+        onCalendarTaskDelete=${onCalendarTaskDelete}
+      />
+    `;
+  } else if (activeTab === "meetings") {
+    activeView = html`
+      <${ModeItemsTab}
+        mode=${primaryUse}
+        itemType="Meeting"
+        calendarTasks=${calendarTasks}
+        calendarTaskDraft=${calendarTaskDraft}
+        editingCalendarTaskId=${editingCalendarTaskId}
+        selectedDate=${selectedCalendarDate}
+        onCalendarTaskDraftChange=${onCalendarTaskDraftChange}
+        onModeItemSubmit=${onModeItemSubmit}
+        onCalendarTaskEdit=${onCalendarTaskEdit}
+        onCalendarTaskCancelEdit=${onCalendarTaskCancelEdit}
+        onCalendarTaskToggle=${onCalendarTaskToggle}
+        onCalendarTaskDelete=${onCalendarTaskDelete}
       />
     `;
   } else if (activeTab === "calendar") {
@@ -6634,6 +7091,7 @@ function DashboardShell({
         calendarTasks=${calendarTasks}
         onRoutineChange=${onRoutineChange}
         onRoutineWorkloadSelect=${onRoutineWorkloadSelect}
+        onRoutineIntervalSelect=${onRoutineIntervalSelect}
         onRoutineActivityChange=${onRoutineActivityChange}
         onRoutineActivityAdd=${onRoutineActivityAdd}
         onRoutineActivityRemove=${onRoutineActivityRemove}
@@ -6655,6 +7113,7 @@ function DashboardShell({
         onDailyActivityRemove=${onDailyActivityRemove}
         onDailyActivitiesLockToggle=${onDailyActivitiesLockToggle}
         onDailyLogSubmit=${onDailyLogSubmit}
+        onDailyLogDelete=${onDailyLogDelete}
         onThoughtDraftChange=${onThoughtDraftChange}
         onThoughtAdd=${onThoughtAdd}
         onThoughtUpdate=${onThoughtUpdate}
@@ -6670,6 +7129,7 @@ function DashboardShell({
       <${AskVireliTab}
         messages=${messages}
         recentAskHistory=${recentAskHistory}
+        promptChips=${askPromptChips}
         chatDraft=${chatDraft}
         isTyping=${isTyping}
         chatError=${chatError}
@@ -6704,9 +7164,15 @@ function DashboardShell({
         onClassUpdate=${onClassUpdate}
         onClassRemove=${onClassRemove}
         onProfileDraftChange=${onProfileDraftChange}
-        onAccountSubmit=${onAccountSubmit}
+        onSaveProfileSettings=${onSaveProfileSettings}
         onDisconnectProfile=${onDisconnectProfile}
         onCalendarPreferenceChange=${onCalendarPreferenceChange}
+        routineDraft=${routineDraft}
+        onRoutineChange=${onRoutineChange}
+        onRoutineWorkloadSelect=${onRoutineWorkloadSelect}
+        onRoutineIntervalSelect=${onRoutineIntervalSelect}
+        onSaveRoutine=${onSaveRoutine}
+        onSchedulingPreferenceChange=${onSchedulingPreferenceChange}
         onTabChange=${onTabChange}
       />
     `;
@@ -6728,7 +7194,7 @@ function DashboardShell({
             <${VireliLogoMark} className="brand-mark" />
           </div>
           <nav className="topbar-nav" aria-label="Primary navigation">
-            ${PRIMARY_NAV_ITEMS.map(
+            ${primaryNavItems.map(
               (item) => html`
                 <button
                   key=${item.id}
@@ -6801,7 +7267,7 @@ function DashboardShell({
             </div>
 
             <nav className="sidebar-nav" aria-label="Primary">
-              ${PRIMARY_NAV_ITEMS.map(
+              ${primaryNavItems.map(
                 (item) => html`
                   <button
                     key=${item.id}
@@ -6830,7 +7296,7 @@ function DashboardShell({
         </div>
 
         <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
-          ${MOBILE_NAV_ITEMS.map(
+          ${mobileNavItems.map(
             (item) => html`
               <button
                 key=${item.id}
@@ -6849,20 +7315,16 @@ function DashboardShell({
 }
 
 function App() {
-  const [introComplete, setIntroComplete] = useState(() => {
-    const savedProfile = loadProfile();
-    return Boolean((savedProfile.connected || savedProfile.guest) && savedProfile.setupComplete);
-  });
+  const [introComplete, setIntroComplete] = useState(false);
   const [moodSelection, setMoodSelection] = useState("");
   const [moodNote, setMoodNote] = useState("");
   const [moodCheckInComplete, setMoodCheckInComplete] = useState(() => {
     const savedProfile = loadProfile();
     return Boolean(savedProfile.setupComplete);
   });
-  const [profileStepComplete, setProfileStepComplete] = useState(() => {
-    const savedProfile = loadProfile();
-    return Boolean((savedProfile.connected || savedProfile.guest) && savedProfile.setupComplete);
-  });
+  const [profileStepComplete, setProfileStepComplete] = useState(false);
+  const [launchSetupStep, setLaunchSetupStep] = useState(1);
+  const [launchSetupComplete, setLaunchSetupComplete] = useState(false);
   const [routineStepComplete, setRoutineStepComplete] = useState(() => {
     const savedProfile = loadProfile();
     return Boolean(savedProfile.setupComplete);
@@ -6877,6 +7339,10 @@ function App() {
   const [askHistory, setAskHistory] = useState(loadAskHistory);
   const [profile, setProfile] = useState(loadProfile);
   const [profileDraft, setProfileDraft] = useState(() => loadProfile());
+  const [accountPassword, setAccountPassword] = useState("");
+  const [accountPasswordConfirm, setAccountPasswordConfirm] = useState("");
+  const [accountPasswordVisible, setAccountPasswordVisible] = useState(false);
+  const [accountError, setAccountError] = useState("");
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [emailAuthStep, setEmailAuthStep] = useState("email");
   const [emailAuthEmail, setEmailAuthEmail] = useState("");
@@ -6923,8 +7389,8 @@ function App() {
   const themeName = getMoodTheme(moodSelection);
   const recentAskHistory = useMemo(() => getRecentAskHistory(askHistory), [askHistory]);
   const archivedAskHistory = useMemo(() => getArchivedAskHistory(askHistory), [askHistory]);
-  const currentSetupStep = Math.max(1, Math.min(4, Number(profile.setupStep || 1)));
-  const dashboardReady = profileStepComplete && profile.setupComplete;
+  const currentSetupStep = Math.max(1, Math.min(3, Number(launchSetupStep || 1)));
+  const dashboardReady = profileStepComplete && launchSetupComplete;
 
   function persistAskConversation(nextMessages = messages) {
     saveAskHistory([]);
@@ -6948,7 +7414,17 @@ function App() {
     setUndoToast(null);
   }
 
-  useEffect(() => undefined, [introComplete]);
+  useEffect(() => {
+    if (introComplete) {
+      return undefined;
+    }
+
+    const introTimer = window.setTimeout(() => {
+      setIntroComplete(true);
+    }, INTRO_SCREEN_DURATION_MS);
+
+    return () => window.clearTimeout(introTimer);
+  }, [introComplete]);
 
   useEffect(() => {
     document.body.dataset.theme = themeName;
@@ -7016,26 +7492,15 @@ function App() {
   }, [profile]);
 
   useEffect(() => {
-    writePersistentArray(THOUGHT_STORAGE_KEY, thoughts);
-  }, [thoughts]);
+    const visibleIds = getPrimaryNavItems(profile.primaryUse || "School").map((item) => item.id);
+    if (!visibleIds.includes(activeTab) && !["settings", "improve"].includes(activeTab)) {
+      setActiveTab("home");
+    }
+  }, [activeTab, profile.primaryUse]);
 
   useEffect(() => {
-    if (!/^https?:$/.test(window.location.protocol)) {
-      setGoogleAuthStatus("needs-server");
-      return;
-    }
-
-    fetch("/api/config")
-      .then((response) => (response.ok ? response.json() : {}))
-      .then((config) => {
-        const clientId = String(config.googleClientId || "").trim();
-        setGoogleClientId(clientId);
-        setGoogleAuthStatus(clientId ? "loading" : "unconfigured");
-      })
-      .catch(() => {
-        setGoogleAuthStatus("unconfigured");
-      });
-  }, []);
+    writePersistentArray(THOUGHT_STORAGE_KEY, thoughts);
+  }, [thoughts]);
 
   useEffect(() => {
     if (!/^https?:$/.test(window.location.protocol)) {
@@ -7053,41 +7518,6 @@ function App() {
       })
       .catch(() => {});
   }, []);
-
-  useEffect(() => {
-    if (!googleClientId) {
-      return undefined;
-    }
-
-    let cancelled = false;
-    let retryId;
-
-    function initializeGoogleSignIn() {
-      if (cancelled) {
-        return;
-      }
-
-      if (!window.google?.accounts?.id) {
-        retryId = window.setTimeout(initializeGoogleSignIn, 180);
-        return;
-      }
-
-      window.google.accounts.id.initialize({
-        client_id: googleClientId,
-        callback: handleGoogleCredential,
-        auto_select: false,
-        cancel_on_tap_outside: true,
-      });
-      setGoogleAuthStatus("ready");
-    }
-
-    initializeGoogleSignIn();
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(retryId);
-    };
-  }, [googleClientId]);
 
   useEffect(() => {
     writePersistentArray(RECOMMENDATION_STORAGE_KEY, []);
@@ -7125,20 +7555,19 @@ function App() {
 
   function handleMoodSelect(choice) {
     setMoodSelection(choice);
+    setMoodNote("");
+    setMoodCheckInComplete(true);
     askSessionIdRef.current = makeId("ask-session");
     setMessages(buildInitialMessages(choice));
-  }
-
-  function handleOpeningGetStarted() {
-    setIntroComplete(true);
-  }
-
-  function handleOpeningSignIn() {
-    setIntroComplete(true);
+    advanceSetupStep(3, {
+      moodSelection: choice,
+      moodNote: "",
+    });
   }
 
   function advanceSetupStep(nextStep, changes = {}) {
     const now = new Date().toISOString();
+    setLaunchSetupStep(Math.max(1, Math.min(3, Number(nextStep || 1))));
     setProfile((currentProfile) => {
       const nextProfile = {
         ...currentProfile,
@@ -7156,6 +7585,13 @@ function App() {
     advanceSetupStep(2, {
       name: profileDraft.name.trim() || profile.name,
       primaryUse: profileDraft.primaryUse || profile.primaryUse,
+    });
+  }
+
+  function handleSetupModeSelect(primaryUse) {
+    advanceSetupStep(2, {
+      name: profileDraft.name.trim() || profile.name || "VIRELI user",
+      primaryUse,
     });
   }
 
@@ -7181,14 +7617,45 @@ function App() {
     const nextRoutine = saveRoutine(routineDraft);
     setRoutine(nextRoutine);
     setRoutineDraft(nextRoutine);
-    advanceSetupStep(4);
+    setRoutineStepComplete(true);
+    setLaunchSetupComplete(true);
+    setLaunchSetupStep(3);
+    setActiveTab("home");
+    setProfile((currentProfile) => {
+      const nextProfile = {
+        ...currentProfile,
+        setupComplete: true,
+        setupStep: 3,
+        routineSetupSkipped: false,
+        updatedAt: new Date().toISOString(),
+      };
+      setProfileDraft(nextProfile);
+      return nextProfile;
+    });
   }
 
   function handleProfileDraftChange(field, value) {
+    setAccountError("");
     setProfileDraft((currentDraft) => ({
       ...currentDraft,
       [field]: value,
     }));
+  }
+
+  function handleSchedulingPreferenceChange(field, value) {
+    setProfile((currentProfile) => {
+      const nextProfile = {
+        ...currentProfile,
+        schedulingPreferences: {
+          ...EMPTY_PROFILE.schedulingPreferences,
+          ...(currentProfile.schedulingPreferences || {}),
+          [field]: value,
+        },
+        updatedAt: new Date().toISOString(),
+      };
+      setProfileDraft(nextProfile);
+      return nextProfile;
+    });
   }
 
   function completeAuthenticatedProfile(user, fallbackAuthMode = "email") {
@@ -7208,7 +7675,7 @@ function App() {
       routineSetupSkipped: profile.routineSetupSkipped,
       primaryUse: profile.primaryUse,
       setupComplete: Boolean(profile.setupComplete),
-      setupStep: profile.setupComplete ? 4 : Math.max(1, Number(profile.setupStep || 1)),
+      setupStep: profile.setupComplete ? 3 : Math.max(1, Math.min(3, Number(profile.setupStep || 1))),
       timezone: profile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
       schedulingPreferences: {
         ...EMPTY_PROFILE.schedulingPreferences,
@@ -7221,6 +7688,8 @@ function App() {
     setProfile(nextProfile);
     setProfileDraft(nextProfile);
     setProfileStepComplete(true);
+    setLaunchSetupStep(1);
+    setLaunchSetupComplete(false);
   }
 
   function handleAccountSubmit(event, authMode = "signin") {
@@ -7246,7 +7715,7 @@ function App() {
       routineSetupSkipped: profile.routineSetupSkipped,
       primaryUse: profile.primaryUse,
       setupComplete: Boolean(profile.setupComplete),
-      setupStep: profile.setupComplete ? 4 : Math.max(1, Number(profile.setupStep || 1)),
+      setupStep: profile.setupComplete ? 3 : Math.max(1, Math.min(3, Number(profile.setupStep || 1))),
       timezone: profile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
       schedulingPreferences: {
         ...EMPTY_PROFILE.schedulingPreferences,
@@ -7259,6 +7728,77 @@ function App() {
     setProfile(nextProfile);
     setProfileDraft(nextProfile);
     setProfileStepComplete(true);
+    setLaunchSetupStep(1);
+    setLaunchSetupComplete(false);
+  }
+
+  function handleVireliAccountSubmit(event) {
+    event?.preventDefault?.();
+
+    const name = profileDraft.name.trim();
+    const email = "";
+
+    if (!name) {
+      setAccountError("Enter a username to create your VIRELI account.");
+      return;
+    }
+
+    if (accountPassword.length < 6) {
+      setAccountError("Use at least 6 characters for your password.");
+      return;
+    }
+
+    if (accountPassword !== accountPasswordConfirm) {
+      setAccountError("Passwords do not match.");
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const nextProfile = {
+      ...EMPTY_PROFILE,
+      connected: true,
+      guest: false,
+      name,
+      email,
+      password: "",
+      authMode: "vireli-local-account",
+      classSetupSkipped: profile.classSetupSkipped,
+      routineSetupSkipped: profile.routineSetupSkipped,
+      primaryUse: profile.primaryUse,
+      setupComplete: Boolean(profile.setupComplete),
+      setupStep: profile.setupComplete ? 3 : Math.max(1, Math.min(3, Number(profile.setupStep || 1))),
+      timezone: profile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+      schedulingPreferences: {
+        ...EMPTY_PROFILE.schedulingPreferences,
+        ...(profile.schedulingPreferences || {}),
+      },
+      createdAt: profile.createdAt || now,
+      updatedAt: now,
+    };
+
+    setProfile(nextProfile);
+    setProfileDraft(nextProfile);
+    setProfileStepComplete(true);
+    setLaunchSetupStep(1);
+    setLaunchSetupComplete(false);
+    setAccountPassword("");
+    setAccountPasswordConfirm("");
+    setAccountError("");
+  }
+
+  function handleSaveProfileSettings() {
+    const now = new Date().toISOString();
+    setProfile((currentProfile) => {
+      const nextProfile = {
+        ...currentProfile,
+        connected: currentProfile.connected || !currentProfile.guest,
+        name: profileDraft.name.trim() || currentProfile.name || "VIRELI user",
+        primaryUse: profileDraft.primaryUse || currentProfile.primaryUse || "School",
+        updatedAt: now,
+      };
+      setProfileDraft(nextProfile);
+      return nextProfile;
+    });
   }
 
   function focusVerificationCodeBox(index) {
@@ -7485,7 +8025,7 @@ function App() {
       routineSetupSkipped: profile.routineSetupSkipped,
       primaryUse: profile.primaryUse,
       setupComplete: Boolean(profile.setupComplete),
-      setupStep: profile.setupComplete ? 4 : Math.max(1, Number(profile.setupStep || 1)),
+      setupStep: profile.setupComplete ? 3 : Math.max(1, Math.min(3, Number(profile.setupStep || 1))),
       timezone: profile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
       schedulingPreferences: {
         ...EMPTY_PROFILE.schedulingPreferences,
@@ -7498,6 +8038,11 @@ function App() {
     setProfile(nextProfile);
     setProfileDraft(nextProfile);
     setProfileStepComplete(true);
+    setLaunchSetupStep(1);
+    setLaunchSetupComplete(false);
+    setAccountPassword("");
+    setAccountPasswordConfirm("");
+    setAccountError("");
   }
 
   function handleDisconnectProfile() {
@@ -7537,6 +8082,14 @@ function App() {
     }));
   }
 
+  function handleRoutineIntervalSelect(option) {
+    setRoutineDraft((currentDraft) => ({
+      ...currentDraft,
+      preferredWorkIntervalLabel: option.label,
+      preferredWorkIntervalMinutes: option.id === "custom" ? "" : String(option.minutes),
+    }));
+  }
+
   function handleRoutineActivityChange(index, field, value) {
     setRoutineDraft((currentDraft) => {
       const dailyActivities = Array.isArray(currentDraft.dailyActivities)
@@ -7549,6 +8102,7 @@ function App() {
         usualTime: "",
         days: "Weekdays",
         fixed: true,
+        activityType: profile.primaryUse || profileDraft.primaryUse || "",
         active: true,
       };
       dailyActivities[index] = {
@@ -7571,6 +8125,7 @@ function App() {
           usualTime: "",
           days: "Weekdays",
           fixed: true,
+          activityType: profile.primaryUse || profileDraft.primaryUse || "",
           active: true,
         },
       ].slice(0, 8),
@@ -7592,12 +8147,14 @@ function App() {
     setRoutine(nextRoutine);
     setRoutineDraft(nextRoutine);
     setRoutineStepComplete(true);
+    setLaunchSetupComplete(true);
+    setLaunchSetupStep(3);
     setActiveTab("home");
     setProfile((currentProfile) => ({
       ...currentProfile,
       routineSetupSkipped: false,
       setupComplete: true,
-      setupStep: 4,
+      setupStep: 3,
       updatedAt: new Date().toISOString(),
     }));
   }
@@ -7930,6 +8487,49 @@ function App() {
     setCalendarTaskDraft(EMPTY_CALENDAR_TASK_DRAFT);
   }
 
+  function handleModeItemSubmit(itemType, event) {
+    event?.preventDefault?.();
+    const title = calendarTaskDraft.title.trim();
+
+    if (!title) {
+      return;
+    }
+
+    const nextTask = normalizeCalendarTask({
+      ...calendarTaskDraft,
+      id: editingCalendarTaskId || calendarTaskDraft.id || makeId(itemType === "Meeting" ? "meeting" : "task"),
+      title,
+      scheduledDate: calendarTaskDraft.scheduledDate || selectedCalendarDate || getDateInputValue(),
+      itemType,
+      type: itemType,
+      fixed: itemType === "Meeting" ? true : Boolean(calendarTaskDraft.fixed),
+      flexible: itemType === "Meeting" ? false : calendarTaskDraft.fixed ? false : calendarTaskDraft.flexible !== false,
+      repeat: calendarTaskDraft.repeat || calendarTaskDraft.frequency !== "Never",
+      createdAt: calendarTaskDraft.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    setCalendarTasks((currentTasks) => {
+      if (editingCalendarTaskId) {
+        return currentTasks.map((task) => (task.id === editingCalendarTaskId ? nextTask : task));
+      }
+
+      return [nextTask, ...currentTasks].slice(0, 60);
+    });
+    setEditingCalendarTaskId("");
+    if (nextTask.scheduledDate) {
+      setCalendarMonth(new Date(`${nextTask.scheduledDate}T12:00:00`));
+      setSelectedCalendarDate(nextTask.scheduledDate);
+    }
+    setCalendarTaskDraft({
+      ...EMPTY_CALENDAR_TASK_DRAFT,
+      itemType,
+      type: itemType,
+      fixed: itemType === "Meeting",
+      flexible: itemType !== "Meeting",
+    });
+  }
+
   function handleCalendarTaskEdit(taskId) {
     const task = calendarTasks.find((item) => item.id === taskId);
 
@@ -8026,6 +8626,48 @@ function App() {
     };
   }
 
+  function classifyAskPlannerType(prompt) {
+    const normalizedPrompt = prompt.toLowerCase();
+    const primaryUse = profile.primaryUse || profileDraft.primaryUse || "School";
+    const meetingPattern = /\b(meeting|call|one[- ]?on[- ]?one|standup|sync|client call|staff meeting|project review)\b/;
+    const assignmentPattern = /\b(homework|worksheet|essay|project|study|studying|test|quiz|classwork|assignment|math|science|biology|chemistry|history|social studies|language arts|english)\b/;
+    const personalTaskPattern = /\b(piano|practice|workout|clean|room|chore|errand|laundry|dishes|exercise|run|gym)\b/;
+
+    if (primaryUse === "Work" && meetingPattern.test(normalizedPrompt)) {
+      return "Meeting";
+    }
+
+    if (primaryUse === "School" && assignmentPattern.test(normalizedPrompt) && !personalTaskPattern.test(normalizedPrompt)) {
+      return "Assignment";
+    }
+
+    return "Task";
+  }
+
+  function detectAskSubject(prompt) {
+    const normalizedPrompt = prompt.toLowerCase();
+    const savedMatch = savedClasses.find((schoolClass) =>
+      normalizedPrompt.includes(schoolClass.label.toLowerCase()),
+    );
+
+    if (savedMatch) {
+      return { classId: savedMatch.id, classLabel: savedMatch.label };
+    }
+
+    const fallbackSubjects = [
+      "Math",
+      "Science",
+      "Biology",
+      "Chemistry",
+      "Social Studies",
+      "Language Arts",
+      "English",
+      "History",
+    ];
+    const subject = fallbackSubjects.find((label) => normalizedPrompt.includes(label.toLowerCase()));
+    return { classId: "", classLabel: subject || "" };
+  }
+
   function buildAskCalendarAction(prompt) {
     const intent = detectAskSchedulingIntent(prompt);
 
@@ -8088,6 +8730,54 @@ function App() {
       };
     }
 
+    const plannerType = classifyAskPlannerType(prompt);
+
+    if (plannerType === "Assignment") {
+      const subject = detectAskSubject(prompt);
+      const estimatedMinutes = estimateAssignmentMinutes(title, prompt);
+      const duplicateAssignment = homeworkItems.find(
+        (item) =>
+          !item.completed &&
+          item.title.toLowerCase() === title.toLowerCase() &&
+          (item.dueDate || item.scheduledDate || "") === scheduledDate,
+      );
+
+      if (duplicateAssignment) {
+        return {
+          needsDetail: true,
+          reply: `${duplicateAssignment.title} is already saved as an assignment for ${formatShortDate(scheduledDate)}.`,
+        };
+      }
+
+      return {
+        action: "add-assignment",
+        assignment: {
+          id: makeId("homework"),
+          classId: subject.classId,
+          classLabel: subject.classLabel,
+          title,
+          topic: title,
+          details: "",
+          notes: "",
+          dueDate: scheduledDate,
+          dueTime: "",
+          scheduledDate,
+          scheduledTime: suggestedTime,
+          estimatedMinutes: String(estimatedMinutes),
+          priority: "Normal",
+          type: "Assignment",
+          frequency,
+          steps: createHomeworkSteps(title, prompt),
+          guidance: buildHomeworkGuidance({ classLabel: subject.classLabel, topic: title, title, details: "" }),
+          completed: false,
+          completedAt: "",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        reply: `I found this: Add "${title}" as an assignment ${dateCopy}at ${formatTimeLabel(suggestedTime)}. Should I add it?`,
+      };
+    }
+
     const duplicateTask = calendarTasks.find(
       (task) =>
         !task.completed &&
@@ -8111,12 +8801,16 @@ function App() {
         scheduledDate,
         scheduledTime: suggestedTime,
         frequency,
+        itemType: plannerType,
+        type: plannerType,
+        fixed: plannerType === "Meeting",
+        flexible: plannerType !== "Meeting",
         notes: "Added from Ask VIRELI.",
         completed: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },
-      reply: `I found this: Add "${title}" ${frequencyCopy}${dateCopy}at ${formatTimeLabel(suggestedTime)}. Should I add it to your calendar?`,
+      reply: `I found this: Add "${title}" as a ${plannerType.toLowerCase()} ${frequencyCopy}${dateCopy}at ${formatTimeLabel(suggestedTime)}. Should I add it to your calendar?`,
     };
   }
 
@@ -8153,6 +8847,14 @@ function App() {
         );
         nextCalendarMonth = pendingScheduleSuggestion.scheduledDate;
         reply = `Updated ${pendingScheduleSuggestion.targetTitle} for ${formatShortDate(pendingScheduleSuggestion.scheduledDate)} at ${formatTimeLabel(pendingScheduleSuggestion.scheduledTime)}.`;
+      } else if (pendingScheduleSuggestion.action === "add-assignment") {
+        const nextAssignment = {
+          ...pendingScheduleSuggestion.assignment,
+          updatedAt: now,
+        };
+        setHomeworkItems((currentItems) => [nextAssignment, ...currentItems].slice(0, 80));
+        nextCalendarMonth = nextAssignment.scheduledDate || nextAssignment.dueDate;
+        reply = `Added ${nextAssignment.title} as an assignment for ${formatShortDate(nextAssignment.dueDate || nextAssignment.scheduledDate)}.`;
       } else {
         const nextTask = normalizeCalendarTask({
           ...pendingScheduleSuggestion.task,
@@ -8470,6 +9172,7 @@ function App() {
         id: makeId("feedback"),
         area: feedbackDraft.area,
         text: feedbackDraft.text.trim(),
+        quickFeedbackCategory: FEEDBACK_QUICK_OPTIONS.includes(feedbackDraft.text.trim()) ? feedbackDraft.text.trim() : "",
         page: activeTab,
         appVersion: APP_VERSION,
         feature: feedbackDraft.area,
@@ -8551,6 +9254,16 @@ function App() {
     setDailyLogs(nextLogs);
     setDailyLogDraft(normalizeDailyLogEntry(nextLogs[0]));
     setDailyLogSubmitted(true);
+  }
+
+  function handleDailyLogDelete(logId) {
+    const deletedLog = dailyLogs.find((log) => log.id === logId);
+    setDailyLogs((currentLogs) => currentLogs.filter((log) => log.id !== logId));
+    if (deletedLog) {
+      showUndoToast("Daily Log deleted.", () => {
+        setDailyLogs((currentLogs) => [deletedLog, ...currentLogs].slice(0, 30));
+      });
+    }
   }
 
   function handleThoughtAdd(event) {
@@ -8700,50 +9413,40 @@ function App() {
 
       <${AnimatePresence} mode="wait">
         ${!introComplete
-          ? html`
-              <${OpeningScreen}
-                key="opening"
-                onGetStarted=${handleOpeningGetStarted}
-                onSignIn=${handleOpeningSignIn}
-              />
-            `
+          ? html`<${OpeningScreen} key="opening" />`
           : !profileStepComplete
           ? html`
                 <${AccountScreen}
                   key="account"
-                  profile=${profile}
-                  googleClientId=${googleClientId}
-                  googleAuthStatus=${googleAuthStatus}
-                  googleAuthError=${googleAuthError}
-                  emailAuthStep=${emailAuthStep}
-                  emailAuthEmail=${emailAuthEmail}
-                  emailAuthCode=${emailAuthCode}
-                  emailAuthMode=${emailAuthMode}
-                  emailAuthStatus=${emailAuthStatus}
-                  emailAuthError=${emailAuthError}
-                  emailAuthMessage=${emailAuthMessage}
-                  onEmailChange=${handleEmailChange}
-                  onEmailContinue=${handleEmailContinue}
-                  onEmailCodeChange=${handleEmailCodeChange}
-                  onEmailCodeKeyDown=${handleEmailCodeKeyDown}
-                  onEmailCodePaste=${handleEmailCodePaste}
-                  onEmailVerify=${handleEmailVerify}
-                  onEmailResend=${handleEmailResend}
-                  onEmailUseDifferentEmail=${handleEmailUseDifferentEmail}
-                  onEmailModeChange=${handleEmailModeChange}
+                  profileDraft=${profileDraft}
+                  accountPassword=${accountPassword}
+                  accountPasswordConfirm=${accountPasswordConfirm}
+                  accountPasswordVisible=${accountPasswordVisible}
+                  accountError=${accountError}
+                  onProfileDraftChange=${handleProfileDraftChange}
+                  onAccountPasswordChange=${(value) => {
+                    setAccountError("");
+                    setAccountPassword(value);
+                  }}
+                  onAccountPasswordConfirmChange=${(value) => {
+                    setAccountError("");
+                    setAccountPasswordConfirm(value);
+                  }}
+                  onAccountPasswordVisibleToggle=${() => setAccountPasswordVisible((currentValue) => !currentValue)}
+                  onVireliAccountSubmit=${handleVireliAccountSubmit}
                   onContinueAsGuest=${handleContinueAsGuest}
                 />
               `
-          : !profile.setupComplete && currentSetupStep === 1
+          : !launchSetupComplete && currentSetupStep === 1
             ? html`
                 <${SetupAboutScreen}
                   key="setup-about"
                   profileDraft=${profileDraft}
                   onProfileDraftChange=${handleProfileDraftChange}
-                  onContinue=${handleSetupAboutContinue}
+                  onModeSelect=${handleSetupModeSelect}
                 />
               `
-          : !profile.setupComplete && currentSetupStep === 2
+          : !launchSetupComplete && currentSetupStep === 2
             ? html`
                 <${MoodCheckInScreen}
                   key="mood"
@@ -8751,29 +9454,15 @@ function App() {
                   moodNote=${moodNote}
                   onMoodSelect=${handleMoodSelect}
                   onMoodNoteChange=${setMoodNote}
-                  onMoodContinue=${handleMoodContinue}
-                  onMoodSkip=${handleMoodSkip}
                 />
               `
-          : !profile.setupComplete && currentSetupStep === 3
+          : !launchSetupComplete && currentSetupStep === 3
             ? html`
                 <${SetupScheduleBasicsScreen}
                   key="setup-schedule"
                   routineDraft=${routineDraft}
                   onRoutineChange=${handleRoutineChange}
-                  onRoutineWorkloadSelect=${handleRoutineWorkloadSelect}
                   onContinue=${handleScheduleBasicsContinue}
-                />
-              `
-          : !profile.setupComplete
-            ? html`
-                <${SetupRoutineBuilderScreen}
-                  key="setup-routine"
-                  routineDraft=${routineDraft}
-                  onRoutineActivityChange=${handleRoutineActivityChange}
-                  onRoutineActivityAdd=${handleRoutineActivityAdd}
-                  onRoutineActivityRemove=${handleRoutineActivityRemove}
-                  onSaveRoutine=${handleSaveRoutine}
                 />
               `
           : html`
@@ -8822,6 +9511,7 @@ function App() {
                   onHomeworkReschedule=${handleHomeworkReschedule}
                   onCalendarTaskDraftChange=${handleCalendarTaskDraftChange}
                   onCalendarTaskSubmit=${handleCalendarTaskSubmit}
+                  onModeItemSubmit=${handleModeItemSubmit}
                   onCalendarTaskEdit=${handleCalendarTaskEdit}
                   onCalendarTaskCancelEdit=${handleCalendarTaskCancelEdit}
                   onCalendarMonthChange=${handleCalendarToday}
@@ -8831,6 +9521,7 @@ function App() {
                   onCalendarTaskDelete=${handleCalendarTaskDelete}
                   onRoutineChange=${handleRoutineChange}
                   onRoutineWorkloadSelect=${handleRoutineWorkloadSelect}
+                  onRoutineIntervalSelect=${handleRoutineIntervalSelect}
                   onRoutineActivityChange=${handleRoutineActivityChange}
                   onRoutineActivityAdd=${handleRoutineActivityAdd}
                   onRoutineActivityRemove=${handleRoutineActivityRemove}
@@ -8840,7 +9531,7 @@ function App() {
                   onClassUpdate=${handleClassUpdate}
                   onClassRemove=${handleClassRemove}
                   onProfileDraftChange=${handleProfileDraftChange}
-                  onAccountSubmit=${handleAccountSubmit}
+                  onSaveProfileSettings=${handleSaveProfileSettings}
                   onDisconnectProfile=${handleDisconnectProfile}
                   onLoadAskHistory=${handleLoadAskHistory}
                   onChatDraftChange=${setChatDraft}
@@ -8867,6 +9558,7 @@ function App() {
                   onDailyActivityRemove=${handleDailyActivityRemove}
                   onDailyActivitiesLockToggle=${handleDailyActivitiesLockToggle}
                   onDailyLogSubmit=${handleDailyLogSubmit}
+                  onDailyLogDelete=${handleDailyLogDelete}
                   onThoughtDraftChange=${setThoughtDraft}
                   onThoughtAdd=${handleThoughtAdd}
                   onThoughtUpdate=${handleThoughtUpdate}
@@ -8879,6 +9571,7 @@ function App() {
                   onClearDailyLogs=${handleClearDailyLogs}
                   onResetSubjects=${handleResetSubjects}
                   onCalendarPreferenceChange=${handleCalendarPreferenceChange}
+                  onSchedulingPreferenceChange=${handleSchedulingPreferenceChange}
                 />
               `}
       </${AnimatePresence}>
