@@ -18,10 +18,10 @@ const NAV_ITEMS = [
 function getPrimaryNavItems(primaryUse = "School") {
   const visibleIds =
     primaryUse === "Work"
-      ? ["home", "tasks", "meetings", "ask", "calendar", "daily-log", "routine"]
+      ? ["home", "tasks", "meetings", "ask", "calendar", "daily-log", "routine", "settings"]
       : primaryUse === "Other"
-        ? ["home", "tasks", "ask", "calendar", "daily-log", "routine"]
-        : ["home", "assignments", "tasks", "ask", "calendar", "daily-log", "routine"];
+        ? ["home", "tasks", "ask", "calendar", "daily-log", "routine", "settings"]
+        : ["home", "assignments", "tasks", "ask", "calendar", "daily-log", "routine", "settings"];
   return visibleIds
     .map((id) => NAV_ITEMS.find((item) => item.id === id))
     .filter(Boolean);
@@ -36,6 +36,7 @@ function getMobileNavItems(primaryUse = "School") {
         { id: "ask", label: "Ask" },
         { id: "calendar", label: "Calendar" },
         { id: "daily-log", label: "Log" },
+        { id: "settings", label: "Settings" },
       ]
     : primaryUse === "Other"
       ? [
@@ -44,6 +45,7 @@ function getMobileNavItems(primaryUse = "School") {
           { id: "ask", label: "Ask" },
           { id: "calendar", label: "Calendar" },
           { id: "daily-log", label: "Log" },
+          { id: "settings", label: "Settings" },
         ]
     : [
         { id: "home", label: "Home" },
@@ -52,6 +54,7 @@ function getMobileNavItems(primaryUse = "School") {
         { id: "ask", label: "Ask" },
         { id: "calendar", label: "Calendar" },
         { id: "daily-log", label: "Log" },
+        { id: "settings", label: "Settings" },
       ];
 }
 
@@ -205,7 +208,7 @@ const EMPTY_FEEDBACK_DRAFT = {
   text: "",
 };
 
-const APP_VERSION = "day16-foundation-redesign-20260827b";
+const APP_VERSION = "day17-secure-account-3step-planner-20260828";
 const INTRO_ANIMATION_SECONDS = 0.8;
 const INTRO_SCREEN_DURATION_MS = 2400;
 const THEME_TRANSITION_DURATION_MS = 2000;
@@ -3755,6 +3758,8 @@ function SetupAboutScreen({
   onProfileDraftChange,
   onModeSelect,
 }) {
+  const canChooseMode = Boolean(profileDraft.name.trim());
+
   return html`
     <${motion.section}
       className="mood-screen min-h-screen relative flex items-center justify-center overflow-hidden px-5 py-8 sm:px-8"
@@ -3774,10 +3779,23 @@ function SetupAboutScreen({
         >
           <div className="mood-heading mood-heading-centered">
             <p className="eyebrow">Setup 1 of 3 · About You</p>
-            <h2 className="font-display">What are you using VIRELI for?</h2>
+            <h2 className="font-display">What should Vireli call you?</h2>
           </div>
 
           <div className="setup-form-stack">
+            <label className="field-stack setup-name-field">
+              <span>Your name</span>
+              <input
+                className="planning-input"
+                value=${profileDraft.name}
+                onInput=${(event) => onProfileDraftChange("name", event.target.value)}
+                placeholder="Type your name"
+                autoComplete="name"
+              />
+            </label>
+            <div className="setup-mode-heading">
+              <h3 className="font-display">What are you using Vireli for?</h3>
+            </div>
             <div className="setup-choice-grid setup-choice-grid-large">
               ${PRIMARY_USE_OPTIONS.map(
                 (option) => html`
@@ -3786,6 +3804,7 @@ function SetupAboutScreen({
                     type="button"
                     className=${cx("mood-choice setup-choice setup-mode-choice", profileDraft.primaryUse === option && "is-selected")}
                     aria-pressed=${profileDraft.primaryUse === option}
+                    disabled=${!canChooseMode}
                     onClick=${() => {
                       onProfileDraftChange("primaryUse", option);
                       onModeSelect(option);
@@ -3808,6 +3827,7 @@ function MoodCheckInScreen({
   moodNote,
   onMoodSelect,
   onMoodNoteChange,
+  onMoodContinue,
 }) {
   return html`
     <${motion.section}
@@ -3849,6 +3869,33 @@ function MoodCheckInScreen({
               `,
             )}
           </div>
+          <${AnimatePresence}>
+            ${moodSelection
+              ? html`
+                  <${motion.div}
+                    className="checkin-reason-panel"
+                    initial=${{ opacity: 0, y: 10 }}
+                    animate=${{ opacity: 1, y: 0 }}
+                    exit=${{ opacity: 0, y: 8 }}
+                    transition=${{ duration: 0.22 }}
+                  >
+                    <label className="field-stack">
+                      <span>Reason, optional</span>
+                      <textarea
+                        className="planning-input compact-textarea"
+                        value=${moodNote}
+                        onInput=${(event) => onMoodNoteChange(event.target.value)}
+                        placeholder="Add a quick note if you want."
+                        rows="3"
+                      ></textarea>
+                    </label>
+                    <button type="button" className="primary-button" onClick=${onMoodContinue}>
+                      Continue
+                    </button>
+                  </${motion.div}>
+                `
+              : null}
+          </${AnimatePresence}>
         </${motion.div}>
       </div>
     </${motion.section}>
@@ -4103,6 +4150,7 @@ function AccountScreen({
   accountPassword,
   accountPasswordConfirm,
   accountPasswordVisible,
+  accountStatus,
   accountError,
   onProfileDraftChange,
   onAccountPasswordChange,
@@ -4111,7 +4159,8 @@ function AccountScreen({
   onVireliAccountSubmit,
   onContinueAsGuest,
 }) {
-  const canCreateAccount = Boolean(profileDraft.name.trim() && accountPassword && accountPasswordConfirm);
+  const isCreatingAccount = accountStatus === "creating";
+  const canCreateAccount = Boolean(profileDraft.name.trim() && accountPassword && accountPasswordConfirm && !isCreatingAccount);
 
   return html`
     <${motion.section}
@@ -4147,6 +4196,7 @@ function AccountScreen({
                 onInput=${(event) => onProfileDraftChange("name", event.target.value)}
                 placeholder="Choose a username"
                 autoComplete="username"
+                disabled=${isCreatingAccount}
               />
             </label>
             <label className="field-stack password-field-stack">
@@ -4159,6 +4209,7 @@ function AccountScreen({
                   onInput=${(event) => onAccountPasswordChange(event.target.value)}
                   placeholder="Create password"
                   autoComplete="new-password"
+                  disabled=${isCreatingAccount}
                 />
                 <button
                   type="button"
@@ -4180,6 +4231,7 @@ function AccountScreen({
                   onInput=${(event) => onAccountPasswordConfirmChange(event.target.value)}
                   placeholder="Confirm password"
                   autoComplete="new-password"
+                  disabled=${isCreatingAccount}
                 />
                 <button
                   type="button"
@@ -4198,18 +4250,18 @@ function AccountScreen({
               className="primary-button auth-primary-button get-started-button"
               disabled=${!canCreateAccount}
             >
-              Create account
+              ${isCreatingAccount ? "Creating account..." : "Create account"}
             </button>
           </form>
 
           <div className="vireli-account-secondary">
-            <button type="button" className="text-link-button account-guest-button" onClick=${onContinueAsGuest}>
+            <button type="button" className="text-link-button account-guest-button" onClick=${onContinueAsGuest} disabled=${isCreatingAccount}>
               Continue as guest
             </button>
           </div>
 
           <p className="account-privacy-note">
-            Your VIRELI Account is local to this device for now.
+            VIRELI stores your username and a secure password hash, never your readable password.
           </p>
         </${motion.div}>
       </div>
@@ -5555,7 +5607,7 @@ function ModeItemsTab({
           <form className="calendar-add-form" onSubmit=${(event) => onModeItemSubmit(itemType, event)}>
             <div className="homework-form-grid">
               <label className="field-stack">
-                <span>${isMeeting ? "Meeting name" : "Task name"}</span>
+                <span>${isMeeting ? "Meeting" : "Task name"}</span>
                 <input
                   className="planning-input"
                   value=${calendarTaskDraft.title}
@@ -5573,7 +5625,7 @@ function ModeItemsTab({
                 />
               </label>
               <label className="field-stack">
-                <span>Preferred time</span>
+                <span>${isMeeting ? "Start time" : "Preferred time"}</span>
                 <input
                   className="planning-input"
                   type="time"
@@ -5581,29 +5633,43 @@ function ModeItemsTab({
                   onInput=${(event) => onCalendarTaskDraftChange("scheduledTime", event.target.value)}
                 />
               </label>
-              <label className="field-stack">
-                <span>Estimated duration</span>
-                <input
-                  className="planning-input"
-                  type="number"
-                  min="5"
-                  step="5"
-                  inputMode="numeric"
-                  value=${calendarTaskDraft.durationMinutes}
-                  onInput=${(event) => onCalendarTaskDraftChange("durationMinutes", event.target.value)}
-                  placeholder="30"
-                />
-              </label>
-              <label className="field-stack">
-                <span>Priority</span>
-                <select
-                  className="planning-input"
-                  value=${calendarTaskDraft.priority}
-                  onChange=${(event) => onCalendarTaskDraftChange("priority", event.target.value)}
-                >
-                  ${["Low", "Normal", "High", "Urgent"].map((option) => html`<option key=${option} value=${option}>${option}</option>`)}
-                </select>
-              </label>
+              ${isMeeting
+                ? html`
+                    <label className="field-stack">
+                      <span>End time</span>
+                      <input
+                        className="planning-input"
+                        type="time"
+                        value=${calendarTaskDraft.endTime}
+                        onInput=${(event) => onCalendarTaskDraftChange("endTime", event.target.value)}
+                      />
+                    </label>
+                  `
+                : html`
+                    <label className="field-stack">
+                      <span>Estimated duration</span>
+                      <input
+                        className="planning-input"
+                        type="number"
+                        min="5"
+                        step="5"
+                        inputMode="numeric"
+                        value=${calendarTaskDraft.durationMinutes}
+                        onInput=${(event) => onCalendarTaskDraftChange("durationMinutes", event.target.value)}
+                        placeholder="30"
+                      />
+                    </label>
+                    <label className="field-stack">
+                      <span>Priority</span>
+                      <select
+                        className="planning-input"
+                        value=${calendarTaskDraft.priority}
+                        onChange=${(event) => onCalendarTaskDraftChange("priority", event.target.value)}
+                      >
+                        ${["Low", "Normal", "High", "Urgent"].map((option) => html`<option key=${option} value=${option}>${option}</option>`)}
+                      </select>
+                    </label>
+                  `}
               <label className="field-stack">
                 <span>Recurrence</span>
                 <select
@@ -5692,6 +5758,63 @@ function ModeItemsTab({
   `;
 }
 
+function DictationButton({ label = "Dictate", onTranscript }) {
+  const [isListening, setIsListening] = useState(false);
+  const [dictationError, setDictationError] = useState("");
+  const recognitionRef = useRef(null);
+
+  function handleDictationToggle() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setDictationError("Dictation is not supported in this browser.");
+      return;
+    }
+
+    if (isListening && recognitionRef.current) {
+      recognitionRef.current.stop();
+      return;
+    }
+
+    setDictationError("");
+    const recognition = new SpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = () => {
+      setIsListening(false);
+      setDictationError("Microphone permission was blocked or stopped.");
+    };
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results || [])
+        .map((result) => result[0]?.transcript || "")
+        .join(" ")
+        .trim();
+      if (transcript) {
+        onTranscript(transcript);
+      }
+    };
+    recognitionRef.current = recognition;
+    recognition.start();
+  }
+
+  return html`
+    <div className="dictation-control">
+      <button
+        type="button"
+        className=${cx("secondary-button dictation-button", isListening && "is-listening")}
+        onClick=${handleDictationToggle}
+        aria-pressed=${isListening}
+      >
+        ${isListening ? "Stop listening" : label}
+      </button>
+      ${isListening ? html`<span className="dictation-status">Listening...</span>` : null}
+      ${dictationError ? html`<span className="dictation-error">${dictationError}</span>` : null}
+    </div>
+  `;
+}
+
 function DailyLogTab({
   timeMode,
   dailyLogDraft,
@@ -5715,8 +5838,13 @@ function DailyLogTab({
   onThoughtConvertToTask,
   onThoughtAskVireli,
 }) {
-  const openThoughts = getOpenThoughts(thoughts);
-  const archivedThoughts = thoughts.filter((thought) => thought.archived || thought.status === "handled").slice(0, 4);
+  const feelingOptions = [
+    { value: "Very bad", icon: ":(", label: "Very bad" },
+    { value: "Bad", icon: ":-/", label: "Bad" },
+    { value: "Okay", icon: ":|", label: "Okay" },
+    { value: "Good", icon: ":)", label: "Good" },
+    { value: "Very good", icon: ":D", label: "Very good" },
+  ];
 
   return html`
     <${motion.section}
@@ -5731,9 +5859,7 @@ function DailyLogTab({
         <div>
           <p className="eyebrow">Reflection</p>
           <h1 className="font-display">Daily Log</h1>
-          <p className="tab-heading-lead">
-            What’s on your mind?
-          </p>
+          <p className="tab-heading-lead">A short end-of-day check-in that stays simple.</p>
         </div>
       </div>
 
@@ -5742,80 +5868,47 @@ function DailyLogTab({
           <div className="card-topline card-topline-simple">
             <span className="micro-badge">Today</span>
           </div>
-          <h3 className="font-display section-title-lg">What’s on your mind?</h3>
-          <p className="privacy-note-light">Private to this device unless you choose to turn a thought into a task.</p>
-
-          <form className="thought-form" onSubmit=${onThoughtAdd}>
-            <label className="field-stack">
-              <span>Quick thought</span>
-              <textarea
-                className="planning-input daily-writing-area"
-                value=${thoughtDraft}
-                onInput=${(event) => onThoughtDraftChange(event.target.value)}
-                placeholder="Save anything that’s on your mind. You can organize it later."
-                rows="8"
-              ></textarea>
-            </label>
-            <div className="card-footer-row">
-              <span>Keep it messy. You can clean it up later.</span>
-              <button type="submit" className="primary-button" disabled=${!thoughtDraft.trim()}>
-                Save thought
-              </button>
-            </div>
-          </form>
-
-          <div className="thought-list">
-            ${openThoughts.length
-              ? openThoughts.map(
-                  (thought) => html`
-                    <div key=${thought.id} className="thought-item">
-                      <textarea
-                        className="planning-input compact-textarea"
-                        value=${thought.text}
-                        rows="2"
-                        onInput=${(event) => onThoughtUpdate(thought.id, event.target.value)}
-                        aria-label="Saved thought"
-                      ></textarea>
-                      <div className="thought-actions">
-                        <button type="button" className="secondary-button" onClick=${() => onThoughtConvertToTask(thought.id)}>
-                          Convert to task
-                        </button>
-                        <button type="button" className="secondary-button" onClick=${() => onThoughtAskVireli(thought.id)}>
-                          Ask VIRELI
-                        </button>
-                        <button type="button" className="secondary-button" onClick=${() => onThoughtHandled(thought.id)}>
-                          Mark handled
-                        </button>
-                        <button type="button" className="secondary-button" onClick=${() => onThoughtArchive(thought.id)}>
-                          Archive
-                        </button>
-                        <button type="button" className="secondary-button" onClick=${() => onThoughtDelete(thought.id)}>
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  `,
-                )
-              : html`<div className="soft-note"><p>Save anything that’s on your mind. You can organize it later.</p></div>`}
+          <h3 className="font-display section-title-lg">How was your day?</h3>
+          <div className="feeling-scale" aria-label="How was your day?">
+            ${feelingOptions.map(
+              (option) => html`
+                <button
+                  key=${option.value}
+                  type="button"
+                  className=${cx("feeling-button", dailyLogDraft.rating === option.value && "is-selected")}
+                  aria-pressed=${dailyLogDraft.rating === option.value}
+                  onClick=${() => onDailyLogChange("rating", option.value)}
+                >
+                  <strong>${option.icon}</strong>
+                  <span>${option.label}</span>
+                </button>
+              `,
+            )}
           </div>
 
-          ${archivedThoughts.length
-            ? html`
-                <details className="thought-archive">
-                  <summary>Handled and archived thoughts</summary>
-                  <div className="compact-list">
-                    ${archivedThoughts.map(
-                      (thought) => html`
-                        <div key=${`archived-${thought.id}`} className="compact-list-row">
-                          <strong>${thought.text}</strong>
-                          <span>${thought.status === "handled" ? "Handled" : "Archived"} · ${formatDateTime(thought.updatedAt)}</span>
-                        </div>
-                      `,
-                    )}
-                  </div>
-                </details>
-              `
+          <label className="field-stack">
+            <span>What was the best part of your day?</span>
+            <textarea
+              className="planning-input daily-writing-area"
+              value=${dailyLogDraft.highlight}
+              onInput=${(event) => onDailyLogChange("highlight", event.target.value)}
+              placeholder="Write one good thing, even if it was small."
+              rows="6"
+            ></textarea>
+          </label>
+          <${DictationButton}
+            label="Use microphone"
+            onTranscript=${(text) => onDailyLogChange("highlight", [dailyLogDraft.highlight, text].filter(Boolean).join(" "))}
+          />
+          ${dailyLogSubmitted
+            ? html`<div className="status-banner status-banner-soft">Daily Log saved.</div>`
             : null}
+            <div className="card-footer-row">
+              <span>Private to this device unless account sync is added later.</span>
+              <button type="button" className="primary-button" onClick=${onDailyLogSubmit} disabled=${!dailyLogDraft.rating || !dailyLogDraft.highlight.trim()}>
+                Save Daily Log
+              </button>
+            </div>
         </article>
 
         <article className="feature-card daily-log-card">
@@ -5834,7 +5927,7 @@ function DailyLogTab({
                         <small>${formatDateTime(log.updatedAt)}</small>
                       </summary>
                       <div className="history-messages">
-                        <p>${(log.activities || []).filter(Boolean).join(", ") || log.highlight || "No entry text saved."}</p>
+                        <p>${log.highlight || (log.activities || []).filter(Boolean).join(", ") || "No entry text saved."}</p>
                         <button
                           type="button"
                           className="secondary-button"
@@ -5848,20 +5941,6 @@ function DailyLogTab({
                 )
               : html`<div className="soft-note"><p>No previous Daily Logs yet.</p></div>`}
           </div>
-          <details className="thought-archive">
-            <summary>Structured check-in</summary>
-            <${DailyLogPanel}
-              timeMode=${timeMode}
-              dailyLogDraft=${dailyLogDraft}
-              dailyLogSubmitted=${dailyLogSubmitted}
-              onDailyLogChange=${onDailyLogChange}
-              onDailyActivityChange=${onDailyActivityChange}
-              onDailyActivityAdd=${onDailyActivityAdd}
-              onDailyActivityRemove=${onDailyActivityRemove}
-              onDailyActivitiesLockToggle=${onDailyActivitiesLockToggle}
-              onDailyLogSubmit=${onDailyLogSubmit}
-            />
-          </details>
         </article>
       </div>
     </${motion.section}>
@@ -5944,7 +6023,7 @@ function CalendarTab({
           <p className="eyebrow">Calendar</p>
           <h1 className="font-display">${getMonthLabel(monthAnchor)}</h1>
           <p className="tab-heading-lead">
-            Add tasks and events, then select a day to see the full schedule.
+            View your schedule by month, week, or day.
           </p>
         </div>
         <div className="calendar-month-controls">
@@ -5967,7 +6046,7 @@ function CalendarTab({
       </div>
 
       <div className="calendar-grid">
-        <article className="feature-card calendar-add-card">
+        ${false ? html`<article className="feature-card calendar-add-card">
           <div className="card-topline card-topline-simple">
             <span className="mood-chip">Tasks | Events</span>
           </div>
@@ -6102,7 +6181,7 @@ function CalendarTab({
               </div>
             </div>
           </form>
-        </article>
+        </article>` : null}
 
         <article className="feature-card calendar-today-card">
           <h3 className="font-display section-title-lg">Today</h3>
@@ -6455,6 +6534,10 @@ function AskVireliTab({
               aria-label="Ask VIRELI"
               disabled=${isTyping}
             />
+            <${DictationButton}
+              label="Mic"
+              onTranscript=${(text) => onChatDraftChange([chatDraft, text].filter(Boolean).join(" "))}
+            />
             <button
               type="submit"
               className="primary-button"
@@ -6574,12 +6657,15 @@ function SettingsTab({
   profile,
   profileDraft,
   routineDraft,
+  passwordDraft,
   onClassDraftChange,
   onClassAdd,
   onClassUpdate,
   onClassRemove,
   onProfileDraftChange,
   onSaveProfileSettings,
+  onPasswordDraftChange,
+  onPasswordSubmit,
   onDisconnectProfile,
   onCalendarPreferenceChange,
   onRoutineChange,
@@ -6654,6 +6740,53 @@ function SettingsTab({
                 Disconnect
               </button>
             </div>
+            <form className="settings-password-form" onSubmit=${onPasswordSubmit}>
+              <label className="field-stack">
+                <span>Current password</span>
+                <input
+                  className="planning-input"
+                  type="password"
+                  value=${passwordDraft.currentPassword}
+                  onInput=${(event) => onPasswordDraftChange("currentPassword", event.target.value)}
+                  placeholder="Current password"
+                  autoComplete="current-password"
+                  disabled=${profile.authMode !== "vireli-account" || passwordDraft.status === "saving"}
+                />
+              </label>
+              <label className="field-stack">
+                <span>New password</span>
+                <input
+                  className="planning-input"
+                  type="password"
+                  value=${passwordDraft.newPassword}
+                  onInput=${(event) => onPasswordDraftChange("newPassword", event.target.value)}
+                  placeholder="New password"
+                  autoComplete="new-password"
+                  disabled=${profile.authMode !== "vireli-account" || passwordDraft.status === "saving"}
+                />
+              </label>
+              <label className="field-stack">
+                <span>Confirm new password</span>
+                <input
+                  className="planning-input"
+                  type="password"
+                  value=${passwordDraft.confirmPassword}
+                  onInput=${(event) => onPasswordDraftChange("confirmPassword", event.target.value)}
+                  placeholder="Confirm new password"
+                  autoComplete="new-password"
+                  disabled=${profile.authMode !== "vireli-account" || passwordDraft.status === "saving"}
+                />
+              </label>
+              ${passwordDraft.error ? html`<p className="auth-inline-error">${passwordDraft.error}</p>` : null}
+              ${passwordDraft.message ? html`<p className="email-auth-message">${passwordDraft.message}</p>` : null}
+              <button
+                type="submit"
+                className="secondary-button"
+                disabled=${profile.authMode !== "vireli-account" || passwordDraft.status === "saving" || !passwordDraft.currentPassword || !passwordDraft.newPassword || !passwordDraft.confirmPassword}
+              >
+                ${passwordDraft.status === "saving" ? "Saving..." : "Change password"}
+              </button>
+            </form>
           </div>
         </details>
 
@@ -6921,6 +7054,7 @@ function DashboardShell({
   thoughtDraft,
   classDraft,
   routineDraft,
+  passwordDraft,
   onTabChange,
   onHomeworkDraftChange,
   onHomeworkSubmit,
@@ -6951,6 +7085,8 @@ function DashboardShell({
   onClassRemove,
   onProfileDraftChange,
   onSaveProfileSettings,
+  onPasswordDraftChange,
+  onPasswordSubmit,
   onDisconnectProfile,
   onLoadAskHistory,
   onChatDraftChange,
@@ -7159,12 +7295,15 @@ function DashboardShell({
         calendarPreferences=${calendarPreferences}
         profile=${profile}
         profileDraft=${profileDraft}
+        passwordDraft=${passwordDraft}
         onClassDraftChange=${onClassDraftChange}
         onClassAdd=${onClassAdd}
         onClassUpdate=${onClassUpdate}
         onClassRemove=${onClassRemove}
         onProfileDraftChange=${onProfileDraftChange}
         onSaveProfileSettings=${onSaveProfileSettings}
+        onPasswordDraftChange=${onPasswordDraftChange}
+        onPasswordSubmit=${onPasswordSubmit}
         onDisconnectProfile=${onDisconnectProfile}
         onCalendarPreferenceChange=${onCalendarPreferenceChange}
         routineDraft=${routineDraft}
@@ -7342,7 +7481,16 @@ function App() {
   const [accountPassword, setAccountPassword] = useState("");
   const [accountPasswordConfirm, setAccountPasswordConfirm] = useState("");
   const [accountPasswordVisible, setAccountPasswordVisible] = useState(false);
+  const [accountStatus, setAccountStatus] = useState("idle");
   const [accountError, setAccountError] = useState("");
+  const [passwordDraft, setPasswordDraft] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+    status: "idle",
+    error: "",
+    message: "",
+  });
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [emailAuthStep, setEmailAuthStep] = useState("email");
   const [emailAuthEmail, setEmailAuthEmail] = useState("");
@@ -7555,14 +7703,8 @@ function App() {
 
   function handleMoodSelect(choice) {
     setMoodSelection(choice);
-    setMoodNote("");
-    setMoodCheckInComplete(true);
     askSessionIdRef.current = makeId("ask-session");
     setMessages(buildInitialMessages(choice));
-    advanceSetupStep(3, {
-      moodSelection: choice,
-      moodNote: "",
-    });
   }
 
   function advanceSetupStep(nextStep, changes = {}) {
@@ -7640,6 +7782,79 @@ function App() {
       ...currentDraft,
       [field]: value,
     }));
+  }
+
+  function handlePasswordDraftChange(field, value) {
+    setPasswordDraft((currentDraft) => ({
+      ...currentDraft,
+      [field]: value,
+      error: "",
+      message: "",
+    }));
+  }
+
+  async function handlePasswordSubmit(event) {
+    event?.preventDefault?.();
+
+    if (passwordDraft.newPassword.length < 8) {
+      setPasswordDraft((currentDraft) => ({
+        ...currentDraft,
+        error: "Use at least 8 characters for your new password.",
+        message: "",
+      }));
+      return;
+    }
+
+    if (passwordDraft.newPassword !== passwordDraft.confirmPassword) {
+      setPasswordDraft((currentDraft) => ({
+        ...currentDraft,
+        error: "New passwords do not match.",
+        message: "",
+      }));
+      return;
+    }
+
+    if (!/^https?:$/.test(window.location.protocol)) {
+      setPasswordDraft((currentDraft) => ({
+        ...currentDraft,
+        error: "Open VIRELI through http://localhost:8001 to change your password.",
+        message: "",
+      }));
+      return;
+    }
+
+    setPasswordDraft((currentDraft) => ({ ...currentDraft, status: "saving", error: "", message: "" }));
+
+    try {
+      const response = await fetch("/api/auth/vireli/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          currentPassword: passwordDraft.currentPassword,
+          newPassword: passwordDraft.newPassword,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "Password could not be changed.");
+      }
+      setPasswordDraft({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+        status: "idle",
+        error: "",
+        message: "Password changed.",
+      });
+    } catch (error) {
+      setPasswordDraft((currentDraft) => ({
+        ...currentDraft,
+        status: "idle",
+        error: error.message || "Password could not be changed.",
+        message: "",
+      }));
+    }
   }
 
   function handleSchedulingPreferenceChange(field, value) {
@@ -7732,19 +7947,18 @@ function App() {
     setLaunchSetupComplete(false);
   }
 
-  function handleVireliAccountSubmit(event) {
+  async function handleVireliAccountSubmit(event) {
     event?.preventDefault?.();
 
     const name = profileDraft.name.trim();
-    const email = "";
 
     if (!name) {
       setAccountError("Enter a username to create your VIRELI account.");
       return;
     }
 
-    if (accountPassword.length < 6) {
-      setAccountError("Use at least 6 characters for your password.");
+    if (accountPassword.length < 8) {
+      setAccountError("Use at least 8 characters for your password.");
       return;
     }
 
@@ -7753,13 +7967,51 @@ function App() {
       return;
     }
 
+    if (!/^https?:$/.test(window.location.protocol)) {
+      setAccountError("Open VIRELI through http://localhost:8001 to create a secure account.");
+      return;
+    }
+
+    setAccountStatus("creating");
+    setAccountError("");
+
+    try {
+      const response = await fetch("/api/auth/vireli/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          username: name,
+          password: accountPassword,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok || !payload.authenticated || !payload.user) {
+        throw new Error(payload.error || "Account could not be created.");
+      }
+
+      completeAuthenticatedProfile(payload.user, "vireli-account");
+      setAccountPassword("");
+      setAccountPasswordConfirm("");
+      setAccountError("");
+    } catch (error) {
+      setAccountError(error.message || "Account could not be created.");
+    } finally {
+      setAccountStatus("idle");
+    }
+  }
+
+  function handleLocalOnlyAccountSubmit() {
+    const name = profileDraft.name.trim();
     const now = new Date().toISOString();
+
     const nextProfile = {
       ...EMPTY_PROFILE,
       connected: true,
       guest: false,
       name,
-      email,
+      email: "",
       password: "",
       authMode: "vireli-local-account",
       classSetupSkipped: profile.classSetupSkipped,
@@ -8442,6 +8694,15 @@ function App() {
     setCalendarTaskDraft((currentDraft) => ({
       ...currentDraft,
       [field]: value,
+      ...(field === "scheduledTime" || field === "endTime"
+        ? {
+            durationMinutes:
+              timeToMinutes(field === "endTime" ? value : currentDraft.endTime) !== null &&
+              timeToMinutes(field === "scheduledTime" ? value : currentDraft.scheduledTime) !== null
+                ? String(Math.max(0, timeToMinutes(field === "endTime" ? value : currentDraft.endTime) - timeToMinutes(field === "scheduledTime" ? value : currentDraft.scheduledTime)))
+                : currentDraft.durationMinutes,
+          }
+        : {}),
       ...(field === "frequency" ? { repeat: value !== "Never" } : {}),
       ...(field === "repeat" && !value ? { frequency: "Never" } : {}),
     }));
@@ -8490,8 +8751,15 @@ function App() {
   function handleModeItemSubmit(itemType, event) {
     event?.preventDefault?.();
     const title = calendarTaskDraft.title.trim();
+    const startMinutes = timeToMinutes(calendarTaskDraft.scheduledTime);
+    const endMinutes = timeToMinutes(calendarTaskDraft.endTime);
 
     if (!title) {
+      return;
+    }
+
+    if (itemType === "Meeting" && startMinutes !== null && endMinutes !== null && endMinutes <= startMinutes) {
+      window.alert("Meeting end time must be after the start time.");
       return;
     }
 
@@ -8502,6 +8770,10 @@ function App() {
       scheduledDate: calendarTaskDraft.scheduledDate || selectedCalendarDate || getDateInputValue(),
       itemType,
       type: itemType,
+      durationMinutes:
+        itemType === "Meeting" && startMinutes !== null && endMinutes !== null
+          ? String(endMinutes - startMinutes)
+          : calendarTaskDraft.durationMinutes,
       fixed: itemType === "Meeting" ? true : Boolean(calendarTaskDraft.fixed),
       flexible: itemType === "Meeting" ? false : calendarTaskDraft.fixed ? false : calendarTaskDraft.flexible !== false,
       repeat: calendarTaskDraft.repeat || calendarTaskDraft.frequency !== "Never",
@@ -9236,21 +9508,19 @@ function App() {
   }
 
   function handleDailyLogSubmit() {
-    const activities = Array.isArray(dailyLogDraft.activities)
-      ? dailyLogDraft.activities
-      : [];
-    const canSubmit =
-      dailyLogDraft.rating &&
-      dailyLogDraft.couldBeBetter &&
-      activities.some((activity) => activity.trim()) &&
-      dailyLogDraft.wentWell.trim() &&
-      dailyLogDraft.didNotGoWell.trim();
+    const canSubmit = dailyLogDraft.rating && dailyLogDraft.highlight.trim();
 
     if (!canSubmit) {
       return;
     }
 
-    const nextLogs = saveDailyLog(dailyLogDraft, dailyLogs);
+    const nextLogs = saveDailyLog(
+      {
+        ...dailyLogDraft,
+        activities: dailyLogDraft.highlight.trim() ? [dailyLogDraft.highlight.trim()] : [],
+      },
+      dailyLogs,
+    );
     setDailyLogs(nextLogs);
     setDailyLogDraft(normalizeDailyLogEntry(nextLogs[0]));
     setDailyLogSubmitted(true);
@@ -9422,6 +9692,7 @@ function App() {
                   accountPassword=${accountPassword}
                   accountPasswordConfirm=${accountPasswordConfirm}
                   accountPasswordVisible=${accountPasswordVisible}
+                  accountStatus=${accountStatus}
                   accountError=${accountError}
                   onProfileDraftChange=${handleProfileDraftChange}
                   onAccountPasswordChange=${(value) => {
@@ -9454,6 +9725,7 @@ function App() {
                   moodNote=${moodNote}
                   onMoodSelect=${handleMoodSelect}
                   onMoodNoteChange=${setMoodNote}
+                  onMoodContinue=${handleMoodContinue}
                 />
               `
           : !launchSetupComplete && currentSetupStep === 3
@@ -9502,6 +9774,7 @@ function App() {
                   thoughtDraft=${thoughtDraft}
                   classDraft=${classDraft}
                   routineDraft=${routineDraft}
+                  passwordDraft=${passwordDraft}
                   onTabChange=${setActiveTab}
                   onHomeworkDraftChange=${handleHomeworkDraftChange}
                   onHomeworkSubmit=${handleHomeworkSubmit}
@@ -9532,6 +9805,8 @@ function App() {
                   onClassRemove=${handleClassRemove}
                   onProfileDraftChange=${handleProfileDraftChange}
                   onSaveProfileSettings=${handleSaveProfileSettings}
+                  onPasswordDraftChange=${handlePasswordDraftChange}
+                  onPasswordSubmit=${handlePasswordSubmit}
                   onDisconnectProfile=${handleDisconnectProfile}
                   onLoadAskHistory=${handleLoadAskHistory}
                   onChatDraftChange=${setChatDraft}

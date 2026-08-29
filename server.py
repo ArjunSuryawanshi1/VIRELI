@@ -86,11 +86,28 @@ def get_database_connection():
             email TEXT NOT NULL,
             name TEXT NOT NULL,
             picture TEXT DEFAULT '',
+            username TEXT UNIQUE,
+            password_hash TEXT,
+            password_salt TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             last_login_at TEXT NOT NULL
         )
         """
+    )
+    user_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(users)").fetchall()
+    }
+    for column_name, definition in {
+        "username": "TEXT",
+        "password_hash": "TEXT",
+        "password_salt": "TEXT",
+    }.items():
+        if column_name not in user_columns:
+            connection.execute(f"ALTER TABLE users ADD COLUMN {column_name} {definition}")
+    connection.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)"
     )
     connection.execute(
         """
@@ -115,13 +132,17 @@ def get_database_connection():
 
 def row_to_user(row):
     google_sub = row["google_sub"]
+    auth_mode = "email" if str(google_sub).startswith("email:") else "google-gis"
+    if str(google_sub).startswith("vireli:"):
+        auth_mode = "vireli-account"
     return {
         "id": row["id"],
         "googleSub": google_sub,
         "email": row["email"],
         "name": row["name"],
+        "username": row["username"] or "",
         "picture": row["picture"] or "",
-        "authMode": "email" if str(google_sub).startswith("email:") else "google-gis",
+        "authMode": auth_mode,
         "createdAt": row["created_at"],
         "updatedAt": row["updated_at"],
         "lastLoginAt": row["last_login_at"],
@@ -215,6 +236,141 @@ def upsert_email_user(email):
         connection.commit()
         user = connection.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     return row_to_user(user)
+
+
+def normalize_username(username):
+    return " ".join(str(username or "").split()).strip().lower()
+
+
+def validate_vireli_account(username, password):
+    normalized_username = normalize_username(username)
+    if not normalized_username:
+        return False, "Enter a username."
+    if len(normalized_username) < 3:
+        return False, "Use at least 3 characters for your username."
+    if len(normalized_username) > 32:
+        return False, "Use 32 characters or fewer for your username."
+    if not re.match(r"^[a-z0-9._-]+$", normalized_username):
+        return False, "Use only letters, numbers, dots, dashes, or underscores."
+    if len(str(password or "")) < 8:
+        return False, "Use at least 8 characters for your password."
+    return True, ""
+
+
+def hash_password(password, salt=None):
+    password_salt = salt or secrets.token_urlsafe(24)
+    password_hash = hashlib.pbkdf2_hmac(
+        "sha256",
+        str(password or "").encode("utf-8"),
+        password_salt.encode("utf-8"),
+        120_000,
+    ).hex()
+    return password_hash, password_salt
+
+
+def verify_password(password, password_hash, password_salt):
+    if not password_hash or not password_salt:
+        return False
+    submitted_hash, _ = hash_password(password, password_salt)
+    return hmac.compare_digest(submitted_hash, password_hash)
+
+
+def create_vireli_user(username, password):
+    valid, error = validate_vireli_account(username, password)
+    if not valid:
+        return False, HTTPStatus.BAD_REQUEST, {"error": error}
+
+    normalized_username = normalize_username(username)
+    password_hash, password_salt = hash_password(password)
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    account_subject = "vireli:" + hashlib.sha256(normalized_username.encode("utf-8")).hexdigest()
+
+    try:
+        with get_database_connection() as connection:
+            existing = connection.execute(
+                "SELECT id FROM users WHERE username = ?",
+                (normalized_username,),
+            ).fetchone()
+            if existing:
+                return False, HTTPStatus.CONFLICT, {"error": "That username is already taken."}
+
+            connection.execute(
+                """
+                INSERT INTO users (
+                    google_sub, email, name, picture, username, password_hash,
+                    password_salt, created_at, updated_at, last_login_at
+                )
+                VALUES (?, '', ?, '', ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    account_subject,
+                    normalized_username,
+                    normalized_username,
+                    password_hash,
+                    password_salt,
+                    now,
+                    now,
+                    now,
+                ),
+            )
+            connection.commit()
+            user_id = connection.execute("SELECT last_insert_rowid()").fetchone()[0]
+            row = connection.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    except sqlite3.IntegrityError:
+        return False, HTTPStatus.CONFLICT, {"error": "That username is already taken."}
+
+    return True, HTTPStatus.OK, {"authenticated": True, "user": row_to_user(row)}
+
+
+def login_vireli_user(username, password):
+    normalized_username = normalize_username(username)
+    with get_database_connection() as connection:
+        row = connection.execute(
+            "SELECT * FROM users WHERE username = ?",
+            (normalized_username,),
+        ).fetchone()
+
+        if not row or not verify_password(password, row["password_hash"], row["password_salt"]):
+            return False, HTTPStatus.UNAUTHORIZED, {"error": "That username or password is not correct."}
+
+        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        connection.execute(
+            "UPDATE users SET updated_at = ?, last_login_at = ? WHERE id = ?",
+            (now, now, row["id"]),
+        )
+        connection.commit()
+        row = connection.execute("SELECT * FROM users WHERE id = ?", (row["id"],)).fetchone()
+
+    return True, HTTPStatus.OK, {"authenticated": True, "user": row_to_user(row)}
+
+
+def change_vireli_password(user_id, current_password, new_password):
+    if len(str(new_password or "")) < 8:
+        return False, HTTPStatus.BAD_REQUEST, {"error": "Use at least 8 characters for your new password."}
+
+    with get_database_connection() as connection:
+        row = connection.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+
+        if not row or not row["username"]:
+            return False, HTTPStatus.BAD_REQUEST, {"error": "Password changes are only available for VIRELI accounts."}
+
+        if not verify_password(current_password, row["password_hash"], row["password_salt"]):
+            return False, HTTPStatus.UNAUTHORIZED, {"error": "Current password is not correct."}
+
+        password_hash, password_salt = hash_password(new_password)
+        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        connection.execute(
+            """
+            UPDATE users
+            SET password_hash = ?, password_salt = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (password_hash, password_salt, now, row["id"]),
+        )
+        connection.commit()
+        row = connection.execute("SELECT * FROM users WHERE id = ?", (row["id"],)).fetchone()
+
+    return True, HTTPStatus.OK, {"ok": True, "user": row_to_user(row)}
 
 
 def get_user_by_id(user_id):
@@ -735,6 +891,46 @@ class VireliRequestHandler(SimpleHTTPRequestHandler):
                 },
                 {"Set-Cookie": self.build_session_cookie_header(user["id"])},
             )
+            return
+
+        if route in ("/api/auth/vireli/register", "/api/auth/vireli/login"):
+            try:
+                payload = self.read_json_body()
+            except (ValueError, json.JSONDecodeError):
+                self.send_json(HTTPStatus.BAD_REQUEST, {"error": "Invalid JSON"})
+                return
+
+            username = payload.get("username")
+            password = payload.get("password")
+            if route == "/api/auth/vireli/register":
+                ok, status, response_payload = create_vireli_user(username, password)
+            else:
+                ok, status, response_payload = login_vireli_user(username, password)
+
+            extra_headers = {}
+            user = response_payload.get("user")
+            if ok and user:
+                extra_headers["Set-Cookie"] = self.build_session_cookie_header(user["id"])
+            self.send_json(status, response_payload, extra_headers)
+            return
+
+        if route == "/api/auth/vireli/change-password":
+            user = self.get_session_user()
+            if not user:
+                self.send_json(HTTPStatus.UNAUTHORIZED, {"error": "Sign in before changing your password."})
+                return
+            try:
+                payload = self.read_json_body()
+            except (ValueError, json.JSONDecodeError):
+                self.send_json(HTTPStatus.BAD_REQUEST, {"error": "Invalid JSON"})
+                return
+
+            ok, status, response_payload = change_vireli_password(
+                user["id"],
+                payload.get("currentPassword"),
+                payload.get("newPassword"),
+            )
+            self.send_json(status, response_payload)
             return
 
         if route in ("/api/auth/email/start", "/api/auth/email/resend"):
