@@ -1,9 +1,9 @@
-const VIRELI_CACHE = "vireli-day17-secure-account-3step-planner-shell-v1";
+const VIRELI_CACHE = "vireli-day18-polish-responsive-shell-v3";
 const VIRELI_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=day17-secure-account-3step-planner-20260828",
-  "./script.js?v=day17-secure-account-3step-planner-20260828",
+  "./styles.css?v=day18-polish-responsive-20260901b",
+  "./script.js?v=day18-polish-responsive-20260901b",
   "./manifest.webmanifest",
   "./icons/vireli-icon.svg",
 ];

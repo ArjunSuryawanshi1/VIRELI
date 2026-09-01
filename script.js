@@ -208,9 +208,19 @@ const EMPTY_FEEDBACK_DRAFT = {
   text: "",
 };
 
-const APP_VERSION = "day17-secure-account-3step-planner-20260828";
-const INTRO_ANIMATION_SECONDS = 0.8;
-const INTRO_SCREEN_DURATION_MS = 2400;
+function getBlankSetupRoutineDraft(baseRoutine = EMPTY_ROUTINE_DRAFT) {
+  return {
+    ...baseRoutine,
+    preferredDailyWorkloadMinutes: "",
+    preferredWorkIntervalMinutes: "",
+    preferredWorkloadLabel: "",
+    preferredWorkIntervalLabel: "",
+  };
+}
+
+const APP_VERSION = "day18-polish-responsive-20260901b";
+const INTRO_ANIMATION_SECONDS = 1.35;
+const INTRO_SCREEN_DURATION_MS = 3200;
 const THEME_TRANSITION_DURATION_MS = 2000;
 const DAY_MODE_START_HOUR = 3;
 const REFLECTION_MODE_START_HOUR = 15;
@@ -255,8 +265,13 @@ const INTERVAL_PICKER_OPTIONS = [15, 20, 25, 30, 35, 40, 45, 50, 60, 75, 90].map
   label: formatDurationFromMinutes(minutes),
 }));
 const PRIMARY_USE_OPTIONS = ["School", "Work", "Other"];
+const PRIMARY_USE_DESCRIPTIONS = {
+  School: "VIRELI will focus on school responsibilities, assignments, study time, and the deadlines you may want help remembering.",
+  Work: "VIRELI will focus on professional responsibilities, meetings, focused work blocks, and a schedule that respects fixed commitments.",
+  Other: "VIRELI will focus on general personal organization, flexible tasks, routines, and the things you want to keep track of.",
+};
 const ROUTINE_DAY_OPTIONS = ["Every day", "Weekdays", "Weekends", "Custom"];
-const SETUP_STEPS = ["About You", "Check In", "Schedule Basics"];
+const SETUP_STEPS = ["About You", "Mood Pulse", "Schedule Basics"];
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const REMINDER_TIMING_OPTIONS = [
   "At planned time",
@@ -3711,7 +3726,7 @@ function OpeningScreen() {
           initial=${{ opacity: 0, x: -72, filter: "blur(14px)" }}
           animate=${{ opacity: 1, x: 0, filter: "blur(0px)" }}
           transition=${{
-            duration: 0.82,
+            duration: INTRO_ANIMATION_SECONDS,
             ease: [0.16, 1, 0.3, 1],
           }}
         >
@@ -3719,7 +3734,7 @@ function OpeningScreen() {
             className="intro-word opening-word font-display"
             initial=${{ opacity: 0, x: "-34vw", filter: "blur(10px)" }}
             animate=${{ opacity: 1, x: 0, filter: "blur(0px)" }}
-            transition=${{ duration: 1.05, delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
+            transition=${{ duration: 1.75, delay: 0.12, ease: [0.16, 1, 0.3, 1] }}
           >
             VIRELI
           </${motion.h1}>
@@ -3727,7 +3742,7 @@ function OpeningScreen() {
             className="intro-credit opening-credit"
             initial=${{ opacity: 0, x: -24 }}
             animate=${{ opacity: 1, x: 0 }}
-            transition=${{ duration: 0.58, delay: 0.32, ease: [0.16, 1, 0.3, 1] }}
+            transition=${{ duration: 0.72, delay: 1.1, ease: [0.16, 1, 0.3, 1] }}
           >
             By Kribu Studios
           </${motion.p}>
@@ -3754,11 +3769,24 @@ function SetupProgress({ step }) {
 }
 
 function SetupAboutScreen({
-  profileDraft,
   onProfileDraftChange,
-  onModeSelect,
+  onContinue,
 }) {
-  const canChooseMode = Boolean(profileDraft.name.trim());
+  const [aboutName, setAboutName] = useState("");
+  const [aboutMode, setAboutMode] = useState("");
+  const canChooseMode = Boolean(aboutName.trim());
+  const selectedModeDescription = PRIMARY_USE_DESCRIPTIONS[aboutMode] || "";
+  const canContinue = canChooseMode && Boolean(aboutMode);
+
+  function updateAboutName(value) {
+    setAboutName(value);
+    onProfileDraftChange("name", value);
+  }
+
+  function updateAboutMode(value) {
+    setAboutMode(value);
+    onProfileDraftChange("primaryUse", value);
+  }
 
   return html`
     <${motion.section}
@@ -3787,8 +3815,8 @@ function SetupAboutScreen({
               <span>Your name</span>
               <input
                 className="planning-input"
-                value=${profileDraft.name}
-                onInput=${(event) => onProfileDraftChange("name", event.target.value)}
+                value=${aboutName}
+                onInput=${(event) => updateAboutName(event.target.value)}
                 placeholder="Type your name"
                 autoComplete="name"
               />
@@ -3802,18 +3830,28 @@ function SetupAboutScreen({
                   <button
                     key=${option}
                     type="button"
-                    className=${cx("mood-choice setup-choice setup-mode-choice", profileDraft.primaryUse === option && "is-selected")}
-                    aria-pressed=${profileDraft.primaryUse === option}
+                    className=${cx("mood-choice setup-choice setup-mode-choice", aboutMode === option && "is-selected")}
+                    aria-pressed=${aboutMode === option}
                     disabled=${!canChooseMode}
-                    onClick=${() => {
-                      onProfileDraftChange("primaryUse", option);
-                      onModeSelect(option);
-                    }}
+                    onClick=${() => updateAboutMode(option)}
                   >
                     <span className="mood-choice-label">${option}</span>
                   </button>
                 `,
               )}
+            </div>
+            ${selectedModeDescription
+              ? html`
+                  <div className="setup-mode-description" role="status">
+                    <strong>${aboutMode}</strong>
+                    <p>${selectedModeDescription}</p>
+                  </div>
+                `
+              : null}
+            <div className="mood-control-row mood-control-row-centered">
+              <button type="button" className="primary-button" onClick=${() => onContinue({ name: aboutName, primaryUse: aboutMode })} disabled=${!canContinue}>
+                Continue
+              </button>
             </div>
           </div>
         </${motion.div}>
@@ -3824,9 +3862,7 @@ function SetupAboutScreen({
 
 function MoodCheckInScreen({
   moodSelection,
-  moodNote,
   onMoodSelect,
-  onMoodNoteChange,
   onMoodContinue,
 }) {
   return html`
@@ -3848,8 +3884,9 @@ function MoodCheckInScreen({
           transition=${{ duration: 0.7, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
         >
             <div className="mood-heading mood-heading-centered">
-            <p className="eyebrow">Setup 2 of 3 · Check In</p>
-            <h2 className="font-display">How Are You Doing Today?</h2>
+            <p className="eyebrow">Setup 2 of 3 · Mood Pulse</p>
+            <h2 className="font-display">Mood Pulse</h2>
+            <p className="tab-heading-lead">How Are You Doing Today?</p>
           </div>
 
           <div className="mood-grid mood-grid-centered">
@@ -3863,39 +3900,24 @@ function MoodCheckInScreen({
                     moodSelection === option.id && "is-selected",
                   )}
                   onClick=${() => onMoodSelect(option.id)}
-                >
+                  >
                   <span className="mood-choice-label">${option.label}</span>
                 </button>
               `,
             )}
           </div>
-          <${AnimatePresence}>
-            ${moodSelection
-              ? html`
-                  <${motion.div}
-                    className="checkin-reason-panel"
-                    initial=${{ opacity: 0, y: 10 }}
-                    animate=${{ opacity: 1, y: 0 }}
-                    exit=${{ opacity: 0, y: 8 }}
-                    transition=${{ duration: 0.22 }}
-                  >
-                    <label className="field-stack">
-                      <span>Reason, optional</span>
-                      <textarea
-                        className="planning-input compact-textarea"
-                        value=${moodNote}
-                        onInput=${(event) => onMoodNoteChange(event.target.value)}
-                        placeholder="Add a quick note if you want."
-                        rows="3"
-                      ></textarea>
-                    </label>
-                    <button type="button" className="primary-button" onClick=${onMoodContinue}>
-                      Continue
-                    </button>
-                  </${motion.div}>
-                `
-              : null}
-          </${AnimatePresence}>
+          ${moodSelection
+            ? html`
+                <div className="mood-selection-note" role="status">
+                  ${MOOD_OPTIONS.find((option) => option.id === moodSelection)?.text || "VIRELI will keep today realistic."}
+                </div>
+              `
+            : null}
+          <div className="mood-control-row mood-control-row-centered">
+            <button type="button" className="primary-button" onClick=${onMoodContinue} disabled=${!moodSelection}>
+              Continue
+            </button>
+          </div>
         </${motion.div}>
       </div>
     </${motion.section}>
@@ -4146,13 +4168,16 @@ function SetupRoutineBuilderScreen({
 }
 
 function AccountScreen({
-  profileDraft,
+  accountStep,
+  accountUsername,
   accountPassword,
   accountPasswordConfirm,
   accountPasswordVisible,
   accountStatus,
   accountError,
-  onProfileDraftChange,
+  onAccountUsernameChange,
+  onAccountUsernameContinue,
+  onAccountBack,
   onAccountPasswordChange,
   onAccountPasswordConfirmChange,
   onAccountPasswordVisibleToggle,
@@ -4160,7 +4185,9 @@ function AccountScreen({
   onContinueAsGuest,
 }) {
   const isCreatingAccount = accountStatus === "creating";
-  const canCreateAccount = Boolean(profileDraft.name.trim() && accountPassword && accountPasswordConfirm && !isCreatingAccount);
+  const canContinueUsername = Boolean(accountUsername.trim()) && !isCreatingAccount;
+  const canCreateAccount = Boolean(accountUsername.trim() && accountPassword && accountPasswordConfirm && !isCreatingAccount);
+  const isPasswordStep = accountStep === "password";
 
   return html`
     <${motion.section}
@@ -4182,26 +4209,44 @@ function AccountScreen({
               <${VireliLogoMark} animated=${true} />
             </div>
             <p className="google-auth-brand font-display">VIRELI</p>
-            <h2 className="font-display">Create your VIRELI account</h2>
-            <p>Set up a quick VIRELI profile so your planner can feel personal.</p>
+            <h2 className="font-display">${isPasswordStep ? "Create your password" : "Choose your username"}</h2>
+            <p>${isPasswordStep ? `Finish creating ${accountUsername || "your"} VIRELI account.` : "Start with the name you want VIRELI to use for this account."}</p>
           </div>
 
-          <form className="vireli-account-form" onSubmit=${onVireliAccountSubmit}>
-            <label className="field-stack">
-              <span>Username</span>
-              <input
-                className="planning-input auth-email-input"
-                type="text"
-                value=${profileDraft.name}
-                onInput=${(event) => onProfileDraftChange("name", event.target.value)}
-                placeholder="Choose a username"
-                autoComplete="username"
-                disabled=${isCreatingAccount}
-              />
-            </label>
-            <label className="field-stack password-field-stack">
-              <span>Create password</span>
-              <div className="password-input-wrap">
+          ${!isPasswordStep
+            ? html`
+                <form className="vireli-account-form" onSubmit=${onAccountUsernameContinue}>
+                  <label className="field-stack">
+                    <span>Username</span>
+                    <input
+                      className="planning-input auth-email-input"
+                      type="text"
+                      value=${accountUsername}
+                      onInput=${(event) => onAccountUsernameChange(event.target.value)}
+                      placeholder="Choose a username"
+                      autoComplete="username"
+                      disabled=${isCreatingAccount}
+                    />
+                  </label>
+                  ${accountError ? html`<p className="auth-inline-error">${accountError}</p>` : null}
+                  <button
+                    type="submit"
+                    className="primary-button auth-primary-button get-started-button"
+                    disabled=${!canContinueUsername}
+                  >
+                    Continue
+                  </button>
+                </form>
+              `
+            : html`
+                <form className="vireli-account-form" onSubmit=${onVireliAccountSubmit}>
+                  <div className="account-step-summary">
+                    <span>Username</span>
+                    <strong>${accountUsername}</strong>
+                  </div>
+                  <label className="field-stack password-field-stack">
+                    <span>Create password</span>
+                    <div className="password-input-wrap">
                 <input
                   className="planning-input auth-email-input"
                   type=${accountPasswordVisible ? "text" : "password"}
@@ -4221,9 +4266,9 @@ function AccountScreen({
                 </button>
               </div>
             </label>
-            <label className="field-stack password-field-stack">
-              <span>Confirm password</span>
-              <div className="password-input-wrap">
+                  <label className="field-stack password-field-stack">
+                    <span>Confirm password</span>
+                    <div className="password-input-wrap">
                 <input
                   className="planning-input auth-email-input"
                   type=${accountPasswordVisible ? "text" : "password"}
@@ -4243,16 +4288,21 @@ function AccountScreen({
                 </button>
               </div>
             </label>
-            ${accountError ? html`<p className="auth-inline-error">${accountError}</p>` : null}
-
-            <button
-              type="submit"
-              className="primary-button auth-primary-button get-started-button"
-              disabled=${!canCreateAccount}
-            >
-              ${isCreatingAccount ? "Creating account..." : "Create account"}
-            </button>
-          </form>
+                  ${accountError ? html`<p className="auth-inline-error">${accountError}</p>` : null}
+                  <div className="account-step-actions">
+                    <button type="button" className="secondary-button" onClick=${onAccountBack} disabled=${isCreatingAccount}>
+                      Back
+                    </button>
+                    <button
+                      type="submit"
+                      className="primary-button auth-primary-button get-started-button"
+                      disabled=${!canCreateAccount}
+                    >
+                      ${isCreatingAccount ? "Creating account..." : "Create account"}
+                    </button>
+                  </div>
+                </form>
+              `}
 
           <div className="vireli-account-secondary">
             <button type="button" className="text-link-button account-guest-button" onClick=${onContinueAsGuest} disabled=${isCreatingAccount}>
@@ -5398,7 +5448,7 @@ function PlanTodayTab({
             <span className="mood-chip">Fast entry</span>
           </div>
           <h3 className="font-display section-title-lg">Add assignment</h3>
-          <p>Subject, assignment, due date, estimate. VIRELI handles the first schedule suggestion.</p>
+          <p>Add the assignments you want VIRELI to remember, especially the ones that could slip your mind later.</p>
 
           ${activeNotifications.length
             ? html`
@@ -5497,7 +5547,7 @@ function PlanTodayTab({
           <div className="card-footer-row">
             <span>
               ${savedClasses.length
-                ? "VIRELI will suggest the first open work session."
+                ? "VIRELI will help you remember it and suggest a realistic work session."
                 : "Add subjects in Settings later to speed this up."}
             </span>
             <button
@@ -5523,14 +5573,14 @@ function PlanTodayTab({
               `
             : html`
                 <p>
-                  No assignments yet. Add one above and VIRELI will schedule the first work session.
+                  No remembered assignments yet. Add anything important that you want VIRELI to keep track of.
                 </p>
               `}
 
           <blockquote className="font-display">
             ${completedHomeworkItems.length
               ? `${completedHomeworkItems.length} finished. VIRELI will keep recalculating the plan.`
-              : "A clear assignment list lets VIRELI decide what to schedule next."}
+              : "Use this for work you do not want to forget."}
           </blockquote>
         </article>
 
@@ -5576,7 +5626,7 @@ function ModeItemsTab({
     .sort((a, b) => `${a.scheduledDate || "9999-12-31"} ${a.scheduledTime || ""}`.localeCompare(`${b.scheduledDate || "9999-12-31"} ${b.scheduledTime || ""}`));
   const pageTitle = isMeeting ? "Meetings" : "Tasks";
   const pageLead = isMeeting
-    ? "Work meetings reserve time so VIRELI does not schedule tasks over them."
+    ? "Add fixed meeting blocks so VIRELI can protect your work time and avoid conflicts."
     : mode === "School"
       ? "Personal responsibilities stay separate from school assignments."
       : "Add what you need to accomplish. VIRELI will fit it around your schedule.";
@@ -5598,21 +5648,21 @@ function ModeItemsTab({
         </div>
       </div>
 
-      <div className="daily-grid">
-        <article className="feature-card feature-card-support plan-builder-card">
+      <div className=${cx("daily-grid", isMeeting && "meeting-grid")}>
+        <article className=${cx("feature-card feature-card-support plan-builder-card", isMeeting && "meeting-builder-card")}>
           <div className="card-topline card-topline-simple">
             <span className="mood-chip">${editingCalendarTaskId ? "Edit" : isMeeting ? "+ Add Meeting" : "+ Add Task"}</span>
           </div>
-          <h3 className="font-display section-title-lg">${editingCalendarTaskId ? `Edit ${itemType.toLowerCase()}` : `Add ${itemType.toLowerCase()}`}</h3>
+          <h3 className="font-display section-title-lg">${editingCalendarTaskId ? `Edit ${itemType.toLowerCase()}` : isMeeting ? "Add meeting" : `Add ${itemType.toLowerCase()}`}</h3>
           <form className="calendar-add-form" onSubmit=${(event) => onModeItemSubmit(itemType, event)}>
             <div className="homework-form-grid">
               <label className="field-stack">
-                <span>${isMeeting ? "Meeting" : "Task name"}</span>
+                <span>${isMeeting ? "Meeting title" : "Task name"}</span>
                 <input
                   className="planning-input"
                   value=${calendarTaskDraft.title}
                   onInput=${(event) => onCalendarTaskDraftChange("title", event.target.value)}
-                  placeholder=${isMeeting ? "Team meeting" : "Practice piano"}
+                  placeholder=${isMeeting ? "Client check-in" : "Practice piano"}
                 />
               </label>
               <label className="field-stack">
@@ -5704,7 +5754,7 @@ function ModeItemsTab({
               <span>${isMeeting ? "Fixed meeting time" : "Fixed time"}</span>
             </label>
             <div className="card-footer-row">
-              <span>${isMeeting ? "Meetings block availability automatically." : "Flexible tasks can move when VIRELI needs to rebalance your day."}</span>
+              <span>${isMeeting ? "Start and end times create a fixed calendar block." : "Flexible tasks can move when VIRELI needs to rebalance your day."}</span>
               <div className="calendar-form-actions">
                 ${editingCalendarTaskId
                   ? html`<button type="button" className="secondary-button" onClick=${onCalendarTaskCancelEdit}>Cancel edit</button>`
@@ -5838,14 +5888,6 @@ function DailyLogTab({
   onThoughtConvertToTask,
   onThoughtAskVireli,
 }) {
-  const feelingOptions = [
-    { value: "Very bad", icon: ":(", label: "Very bad" },
-    { value: "Bad", icon: ":-/", label: "Bad" },
-    { value: "Okay", icon: ":|", label: "Okay" },
-    { value: "Good", icon: ":)", label: "Good" },
-    { value: "Very good", icon: ":D", label: "Very good" },
-  ];
-
   return html`
     <${motion.section}
       key="daily-log"
@@ -5859,7 +5901,7 @@ function DailyLogTab({
         <div>
           <p className="eyebrow">Reflection</p>
           <h1 className="font-display">Daily Log</h1>
-          <p className="tab-heading-lead">A short end-of-day check-in that stays simple.</p>
+          <p className="tab-heading-lead">A simple place to save what happened today.</p>
         </div>
       </div>
 
@@ -5868,44 +5910,41 @@ function DailyLogTab({
           <div className="card-topline card-topline-simple">
             <span className="micro-badge">Today</span>
           </div>
-          <h3 className="font-display section-title-lg">How was your day?</h3>
-          <div className="feeling-scale" aria-label="How was your day?">
-            ${feelingOptions.map(
-              (option) => html`
-                <button
-                  key=${option.value}
-                  type="button"
-                  className=${cx("feeling-button", dailyLogDraft.rating === option.value && "is-selected")}
-                  aria-pressed=${dailyLogDraft.rating === option.value}
-                  onClick=${() => onDailyLogChange("rating", option.value)}
-                >
-                  <strong>${option.icon}</strong>
-                  <span>${option.label}</span>
-                </button>
-              `,
-            )}
-          </div>
-
-          <label className="field-stack">
-            <span>What was the best part of your day?</span>
+          <h3 className="font-display section-title-lg">What went well in your day?</h3>
+          <label className="field-stack daily-log-question">
+            <span>What went well in your day?</span>
             <textarea
               className="planning-input daily-writing-area"
-              value=${dailyLogDraft.highlight}
-              onInput=${(event) => onDailyLogChange("highlight", event.target.value)}
-              placeholder="Write one good thing, even if it was small."
+              value=${dailyLogDraft.wentWell}
+              onInput=${(event) => onDailyLogChange("wentWell", event.target.value)}
+              placeholder="Write one thing that went well."
               rows="6"
             ></textarea>
           </label>
           <${DictationButton}
             label="Use microphone"
-            onTranscript=${(text) => onDailyLogChange("highlight", [dailyLogDraft.highlight, text].filter(Boolean).join(" "))}
+            onTranscript=${(text) => onDailyLogChange("wentWell", [dailyLogDraft.wentWell, text].filter(Boolean).join(" "))}
+          />
+          <label className="field-stack daily-log-question">
+            <span>Could it have gone better?</span>
+            <textarea
+              className="planning-input daily-writing-area"
+              value=${dailyLogDraft.couldBeBetter}
+              onInput=${(event) => onDailyLogChange("couldBeBetter", event.target.value)}
+              placeholder="Write what could have gone better, if anything."
+              rows="6"
+            ></textarea>
+          </label>
+          <${DictationButton}
+            label="Use microphone"
+            onTranscript=${(text) => onDailyLogChange("couldBeBetter", [dailyLogDraft.couldBeBetter, text].filter(Boolean).join(" "))}
           />
           ${dailyLogSubmitted
             ? html`<div className="status-banner status-banner-soft">Daily Log saved.</div>`
             : null}
             <div className="card-footer-row">
               <span>Private to this device unless account sync is added later.</span>
-              <button type="button" className="primary-button" onClick=${onDailyLogSubmit} disabled=${!dailyLogDraft.rating || !dailyLogDraft.highlight.trim()}>
+              <button type="button" className="primary-button" onClick=${onDailyLogSubmit} disabled=${!dailyLogDraft.wentWell.trim() && !dailyLogDraft.couldBeBetter.trim()}>
                 Save Daily Log
               </button>
             </div>
@@ -5923,11 +5962,12 @@ function DailyLogTab({
                   (log) => html`
                     <details key=${log.id} className="history-item">
                       <summary>
-                        <span>${log.rating || "Daily Log"}</span>
+                        <span>${log.wentWell || log.highlight || "Daily Log"}</span>
                         <small>${formatDateTime(log.updatedAt)}</small>
                       </summary>
                       <div className="history-messages">
-                        <p>${log.highlight || (log.activities || []).filter(Boolean).join(", ") || "No entry text saved."}</p>
+                        <p><strong>Went well:</strong> ${log.wentWell || log.highlight || "Not listed"}</p>
+                        <p><strong>Could it have gone better:</strong> ${log.couldBeBetter || log.didNotGoWell || "Not listed"}</p>
                         <button
                           type="button"
                           className="secondary-button"
@@ -6675,6 +6715,249 @@ function SettingsTab({
   onSchedulingPreferenceChange,
   onTabChange,
 }) {
+  const [activeSettingsSection, setActiveSettingsSection] = useState("");
+  const accountSummary = profile.connected
+    ? profile.name || "Local account"
+    : profile.guest
+      ? "Guest mode"
+      : "Optional";
+  const settingsSections = [
+    { id: "account", title: "Account & Security", summary: accountSummary },
+    { id: "mode", title: "Mode", summary: profile.primaryUse || "School" },
+    { id: "subjects", title: "Subjects", summary: `${savedClasses.length} saved` },
+    { id: "notifications", title: "Notifications", summary: calendarPreferences.remindersEnabled ? "On" : "Off" },
+    {
+      id: "scheduling",
+      title: "Scheduling",
+      summary: routineDraft.preferredDailyWorkloadMinutes
+        ? formatDurationFromMinutes(Number(routineDraft.preferredDailyWorkloadMinutes))
+        : "Set limits",
+    },
+    { id: "privacy", title: "Privacy & Data", summary: "Local storage" },
+    { id: "appearance", title: "Appearance", summary: "Automatic" },
+    { id: "daily-logs", title: "Daily Logs", summary: `${dailyLogs.length}` },
+    { id: "archived-chats", title: "Archived Chats", summary: `${archivedAskHistory.length}` },
+  ];
+  const activeSection = settingsSections.find((section) => section.id === activeSettingsSection);
+
+  const renderSettingsDetail = () => {
+    if (activeSettingsSection === "account") {
+      return html`
+        <div className="settings-detail-body">
+          <p>
+            ${profile.connected
+              ? `Signed in locally as ${profile.name || "VIRELI user"}. Your password is not shown here.`
+              : profile.guest
+                ? "Using VIRELI as a guest on this device."
+                : "A VIRELI Account is a quick local profile for personalization."}
+          </p>
+          <div className="profile-form">
+            <label className="field-stack">
+              <span>Display name</span>
+              <input
+                className="planning-input"
+                value=${profileDraft.name}
+                onInput=${(event) => onProfileDraftChange("name", event.target.value)}
+                placeholder="Your name"
+              />
+            </label>
+          </div>
+          <div className="settings-action-row">
+            <button type="button" className="secondary-button" onClick=${onSaveProfileSettings} disabled=${!profileDraft.name.trim()}>
+              Save profile
+            </button>
+            <button type="button" className="secondary-button" onClick=${onDisconnectProfile} disabled=${!profile.connected && !profile.guest}>
+              Disconnect
+            </button>
+          </div>
+          <form className="settings-password-form" onSubmit=${onPasswordSubmit}>
+            <label className="field-stack">
+              <span>Current password</span>
+              <input className="planning-input" type="password" value=${passwordDraft.currentPassword} onInput=${(event) => onPasswordDraftChange("currentPassword", event.target.value)} placeholder="Current password" autoComplete="current-password" disabled=${profile.authMode !== "vireli-account" || passwordDraft.status === "saving"} />
+            </label>
+            <label className="field-stack">
+              <span>New password</span>
+              <input className="planning-input" type="password" value=${passwordDraft.newPassword} onInput=${(event) => onPasswordDraftChange("newPassword", event.target.value)} placeholder="New password" autoComplete="new-password" disabled=${profile.authMode !== "vireli-account" || passwordDraft.status === "saving"} />
+            </label>
+            <label className="field-stack">
+              <span>Confirm new password</span>
+              <input className="planning-input" type="password" value=${passwordDraft.confirmPassword} onInput=${(event) => onPasswordDraftChange("confirmPassword", event.target.value)} placeholder="Confirm new password" autoComplete="new-password" disabled=${profile.authMode !== "vireli-account" || passwordDraft.status === "saving"} />
+            </label>
+            ${passwordDraft.error ? html`<p className="auth-inline-error">${passwordDraft.error}</p>` : null}
+            ${passwordDraft.message ? html`<p className="email-auth-message">${passwordDraft.message}</p>` : null}
+            <button type="submit" className="secondary-button" disabled=${profile.authMode !== "vireli-account" || passwordDraft.status === "saving" || !passwordDraft.currentPassword || !passwordDraft.newPassword || !passwordDraft.confirmPassword}>
+              ${passwordDraft.status === "saving" ? "Saving..." : "Change password"}
+            </button>
+          </form>
+        </div>
+      `;
+    }
+
+    if (activeSettingsSection === "mode") {
+      return html`
+        <div className="settings-detail-body">
+          <p>Mode changes VIRELI’s pages and terminology without deleting hidden data.</p>
+          <div className="setup-choice-grid">
+            ${PRIMARY_USE_OPTIONS.map(
+              (option) => html`
+                <button
+                  key=${option}
+                  type="button"
+                  className=${cx("mood-choice setup-choice", (profileDraft.primaryUse || profile.primaryUse) === option && "is-selected")}
+                  aria-pressed=${(profileDraft.primaryUse || profile.primaryUse) === option}
+                  onClick=${() => onProfileDraftChange("primaryUse", option)}
+                >
+                  <span className="mood-choice-label">${option}</span>
+                </button>
+              `,
+            )}
+          </div>
+          <button type="button" className="primary-button" onClick=${onSaveProfileSettings} disabled=${!profileDraft.primaryUse}>
+            Save mode
+          </button>
+        </div>
+      `;
+    }
+
+    if (activeSettingsSection === "subjects") {
+      return html`
+        <div className="settings-detail-body">
+          <div className="settings-class-list">
+            ${savedClasses.length
+              ? savedClasses.map(
+                  (schoolClass) => html`
+                    <div key=${schoolClass.id} className="settings-class-row">
+                      <input className="planning-input" value=${schoolClass.label} onInput=${(event) => onClassUpdate(schoolClass.id, event.target.value)} aria-label=${`Subject name: ${schoolClass.label}`} />
+                      <button type="button" className="secondary-button" onClick=${() => onClassRemove(schoolClass.id)}>Remove</button>
+                    </div>
+                  `,
+                )
+              : html`<div className="soft-note"><p>No subjects saved yet.</p></div>`}
+          </div>
+          <form className="settings-add-class-form" onSubmit=${onClassAdd}>
+            <label className="field-stack">
+              <span>Add subject</span>
+              <input className="planning-input" value=${classDraft} onInput=${(event) => onClassDraftChange(event.target.value)} placeholder="Math, Biology, Debate..." />
+            </label>
+            <button type="submit" className="secondary-button" disabled=${!classDraft.trim()}>Add subject</button>
+          </form>
+        </div>
+      `;
+    }
+
+    if (activeSettingsSection === "notifications") {
+      return html`
+        <div className="settings-detail-body">
+          <p>Keep reminders gentle. VIRELI should help you restart, not make you feel guilty.</p>
+          <label className="settings-toggle-row">
+            <input type="checkbox" checked=${calendarPreferences.remindersEnabled} onChange=${(event) => onCalendarPreferenceChange("remindersEnabled", event.target.checked)} />
+            <span>Reminders on</span>
+          </label>
+          <label className="field-stack">
+            <span>Gentle reminder timing</span>
+            <select className="planning-input" value=${calendarPreferences.reminderTiming} onChange=${(event) => onCalendarPreferenceChange("reminderTiming", event.target.value)} disabled=${!calendarPreferences.remindersEnabled}>
+              ${REMINDER_TIMING_OPTIONS.map((option) => html`<option key=${option} value=${option}>${option}</option>`)}
+            </select>
+          </label>
+        </div>
+      `;
+    }
+
+    if (activeSettingsSection === "scheduling") {
+      return html`
+        <div className="settings-detail-body">
+          <p>These preferences help VIRELI suggest realistic blocks without filling every open minute.</p>
+          <${DurationScrollPicker} label="Preferred daily workload hours" value=${routineDraft.preferredDailyWorkloadMinutes} options=${DURATION_PICKER_OPTIONS} onChange=${(value) => onRoutineChange("preferredDailyWorkloadMinutes", value)} />
+          <${DurationScrollPicker} label="Preferred work interval" value=${routineDraft.preferredWorkIntervalMinutes} options=${INTERVAL_PICKER_OPTIONS} onChange=${(value) => onRoutineChange("preferredWorkIntervalMinutes", value)} />
+          <label className="field-stack">
+            <span>Mood influence strength</span>
+            <select className="planning-input" value=${profile.schedulingPreferences?.moodInfluenceStrength || "Medium"} onChange=${(event) => onSchedulingPreferenceChange("moodInfluenceStrength", event.target.value)}>
+              ${["Off", "Light", "Medium", "Strong"].map((option) => html`<option key=${option} value=${option}>${option}</option>`)}
+            </select>
+          </label>
+          <div className="settings-action-row">
+            <button type="button" className="primary-button" onClick=${onSaveRoutine}>Save scheduling preferences</button>
+            <button type="button" className="secondary-button" onClick=${() => onTabChange("routine")}>Open Your Routine</button>
+          </div>
+        </div>
+      `;
+    }
+
+    if (activeSettingsSection === "privacy") {
+      return html`
+        <div className="settings-detail-body">
+          <p>VIRELI stores your schedule, mood check-ins, routine, Daily Log, and personalization data on this device so planning can keep working between visits.</p>
+          <div className="soft-note"><p>VIRELI keeps the visible account flow simple and does not connect to outside calendars or inboxes.</p></div>
+        </div>
+      `;
+    }
+
+    if (activeSettingsSection === "appearance") {
+      return html`
+        <div className="settings-detail-body">
+          <p>VIRELI keeps a consistent red-and-white look. Mood changes recommendations, not the visual theme.</p>
+          <label className="settings-toggle-row">
+            <input type="checkbox" checked=${calendarPreferences.noGuiltLanguage} onChange=${(event) => onCalendarPreferenceChange("noGuiltLanguage", event.target.checked)} />
+            <span>No guilt language</span>
+          </label>
+        </div>
+      `;
+    }
+
+    if (activeSettingsSection === "daily-logs") {
+      return html`
+        <div className="settings-detail-body">
+          <p>Review saved reflections from the Daily Log tab.</p>
+          <div className="history-list">
+            ${dailyLogs.length
+              ? dailyLogs.map(
+                  (log) => html`
+                    <details key=${log.id} className="history-item">
+                      <summary>
+                        <span>${log.wentWell || log.highlight || "Daily Log"}</span>
+                        <small>${formatDateTime(log.updatedAt)}</small>
+                      </summary>
+                      <div className="history-messages">
+                        <p><strong>Went well:</strong> ${log.wentWell || log.highlight || "Not listed"}</p>
+                        <p><strong>Could it have gone better:</strong> ${log.couldBeBetter || log.didNotGoWell || "Not listed"}</p>
+                      </div>
+                    </details>
+                  `,
+                )
+              : html`<div className="soft-note"><p>No Daily Logs saved yet.</p></div>`}
+          </div>
+        </div>
+      `;
+    }
+
+    if (activeSettingsSection === "archived-chats") {
+      return html`
+        <div className="settings-detail-body">
+          <p>Archived Ask VIRELI conversations stay out of the main planner.</p>
+          <div className="history-list">
+            ${archivedAskHistory.length
+              ? archivedAskHistory.map(
+                  (chat) => html`
+                    <details key=${chat.id} className="history-item">
+                      <summary>
+                        <span>${chat.summary || "Ask VIRELI chat"}</span>
+                        <small>${formatDateTime(chat.updatedAt)}</small>
+                      </summary>
+                      <div className="history-messages">
+                        ${(chat.messages || []).slice(-6).map((message) => html`<p key=${message.id}><strong>${message.role}:</strong> ${message.content}</p>`)}
+                      </div>
+                    </details>
+                  `,
+                )
+              : html`<div className="soft-note"><p>No archived chats.</p></div>`}
+          </div>
+        </div>
+      `;
+    }
+
+    return null;
+  };
+
   return html`
     <${motion.section}
       key="settings"
@@ -6691,330 +6974,37 @@ function SettingsTab({
         </div>
       </div>
 
-      <div className="settings-list">
-        <details className="settings-list-row" open>
-          <summary>
-            <span>Account & Security</span>
-            <small>
-              ${profile.connected
-                ? profile.name || "Local account"
-                : profile.guest
-                  ? "Guest mode"
-                  : "Optional"}
-            </small>
-          </summary>
-          <div className="settings-row-body">
-            <p>
-              ${profile.connected
-                ? `Signed in locally as ${profile.name || "VIRELI user"}. Your password is not shown here.`
-                : profile.guest
-                  ? "Using VIRELI as a guest on this device."
-                  : "A VIRELI Account is a quick local profile for personalization."}
-            </p>
-            <div className="profile-form">
-              <label className="field-stack">
-                <span>Display name</span>
-                <input
-                  className="planning-input"
-                  value=${profileDraft.name}
-                  onInput=${(event) => onProfileDraftChange("name", event.target.value)}
-                  placeholder="Your name"
-                />
-              </label>
-            </div>
-            <div className="settings-action-row">
-              <button
-                type="button"
-                className="secondary-button"
-                onClick=${onSaveProfileSettings}
-                disabled=${!profileDraft.name.trim()}
-              >
-                Save profile
+      ${activeSection
+        ? html`
+            <article className="settings-detail-screen">
+              <button type="button" className="settings-back-button" onClick=${() => setActiveSettingsSection("")}>
+                Back to Settings
               </button>
-              <button
-                type="button"
-                className="secondary-button"
-                onClick=${onDisconnectProfile}
-                disabled=${!profile.connected && !profile.guest}
-              >
-                Disconnect
-              </button>
-            </div>
-            <form className="settings-password-form" onSubmit=${onPasswordSubmit}>
-              <label className="field-stack">
-                <span>Current password</span>
-                <input
-                  className="planning-input"
-                  type="password"
-                  value=${passwordDraft.currentPassword}
-                  onInput=${(event) => onPasswordDraftChange("currentPassword", event.target.value)}
-                  placeholder="Current password"
-                  autoComplete="current-password"
-                  disabled=${profile.authMode !== "vireli-account" || passwordDraft.status === "saving"}
-                />
-              </label>
-              <label className="field-stack">
-                <span>New password</span>
-                <input
-                  className="planning-input"
-                  type="password"
-                  value=${passwordDraft.newPassword}
-                  onInput=${(event) => onPasswordDraftChange("newPassword", event.target.value)}
-                  placeholder="New password"
-                  autoComplete="new-password"
-                  disabled=${profile.authMode !== "vireli-account" || passwordDraft.status === "saving"}
-                />
-              </label>
-              <label className="field-stack">
-                <span>Confirm new password</span>
-                <input
-                  className="planning-input"
-                  type="password"
-                  value=${passwordDraft.confirmPassword}
-                  onInput=${(event) => onPasswordDraftChange("confirmPassword", event.target.value)}
-                  placeholder="Confirm new password"
-                  autoComplete="new-password"
-                  disabled=${profile.authMode !== "vireli-account" || passwordDraft.status === "saving"}
-                />
-              </label>
-              ${passwordDraft.error ? html`<p className="auth-inline-error">${passwordDraft.error}</p>` : null}
-              ${passwordDraft.message ? html`<p className="email-auth-message">${passwordDraft.message}</p>` : null}
-              <button
-                type="submit"
-                className="secondary-button"
-                disabled=${profile.authMode !== "vireli-account" || passwordDraft.status === "saving" || !passwordDraft.currentPassword || !passwordDraft.newPassword || !passwordDraft.confirmPassword}
-              >
-                ${passwordDraft.status === "saving" ? "Saving..." : "Change password"}
-              </button>
-            </form>
-          </div>
-        </details>
-
-        <details className="settings-list-row">
-          <summary>
-            <span>Mode</span>
-            <small>${profile.primaryUse || "School"}</small>
-          </summary>
-          <div className="settings-row-body">
-            <p>Mode changes VIRELI’s pages and terminology without deleting hidden data.</p>
-            <div className="setup-choice-grid">
-              ${PRIMARY_USE_OPTIONS.map(
-                (option) => html`
+              <div className="settings-detail-heading">
+                <p className="eyebrow">Settings detail</p>
+                <h2 className="font-display">${activeSection.title}</h2>
+                <p>${activeSection.summary}</p>
+              </div>
+              ${renderSettingsDetail()}
+            </article>
+          `
+        : html`
+            <div className="settings-menu-list">
+              ${settingsSections.map(
+                (section) => html`
                   <button
-                    key=${option}
+                    key=${section.id}
                     type="button"
-                    className=${cx("mood-choice setup-choice", (profileDraft.primaryUse || profile.primaryUse) === option && "is-selected")}
-                    aria-pressed=${(profileDraft.primaryUse || profile.primaryUse) === option}
-                    onClick=${() => onProfileDraftChange("primaryUse", option)}
+                    className="settings-menu-row"
+                    onClick=${() => setActiveSettingsSection(section.id)}
                   >
-                    <span className="mood-choice-label">${option}</span>
+                    <span>${section.title}</span>
+                    <small>${section.summary}</small>
                   </button>
                 `,
               )}
             </div>
-            <button
-              type="button"
-              className="primary-button"
-              onClick=${onSaveProfileSettings}
-              disabled=${!profileDraft.primaryUse}
-            >
-              Save mode
-            </button>
-          </div>
-        </details>
-
-        <details className="settings-list-row">
-          <summary>
-            <span>Subjects</span>
-            <small>${savedClasses.length} saved</small>
-          </summary>
-          <div className="settings-row-body">
-            <div className="settings-class-list">
-              ${savedClasses.length
-                ? savedClasses.map(
-                    (schoolClass) => html`
-                      <div key=${schoolClass.id} className="settings-class-row">
-                        <input
-                          className="planning-input"
-                          value=${schoolClass.label}
-                          onInput=${(event) => onClassUpdate(schoolClass.id, event.target.value)}
-                          aria-label=${`Subject name: ${schoolClass.label}`}
-                        />
-                        <button
-                          type="button"
-                          className="secondary-button"
-                          onClick=${() => onClassRemove(schoolClass.id)}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    `,
-                  )
-                : html`<div className="soft-note"><p>No subjects saved yet.</p></div>`}
-            </div>
-
-            <form className="settings-add-class-form" onSubmit=${onClassAdd}>
-              <label className="field-stack">
-                <span>Add subject</span>
-                <input
-                  className="planning-input"
-                  value=${classDraft}
-                  onInput=${(event) => onClassDraftChange(event.target.value)}
-                  placeholder="Math, Biology, Debate..."
-                />
-              </label>
-              <button
-                type="submit"
-                className="secondary-button"
-                disabled=${!classDraft.trim()}
-              >
-                Add subject
-              </button>
-            </form>
-          </div>
-        </details>
-
-        <details className="settings-list-row">
-          <summary>
-            <span>Notifications</span>
-            <small>${calendarPreferences.remindersEnabled ? "On" : "Off"}</small>
-          </summary>
-          <div className="settings-row-body">
-            <p>Keep reminders gentle. VIRELI should help you restart, not make you feel guilty.</p>
-            <label className="settings-toggle-row">
-              <input
-                type="checkbox"
-                checked=${calendarPreferences.remindersEnabled}
-                onChange=${(event) => onCalendarPreferenceChange("remindersEnabled", event.target.checked)}
-              />
-              <span>Reminders on</span>
-            </label>
-            <label className="field-stack">
-              <span>Gentle reminder timing</span>
-              <select
-                className="planning-input"
-                value=${calendarPreferences.reminderTiming}
-                onChange=${(event) => onCalendarPreferenceChange("reminderTiming", event.target.value)}
-                disabled=${!calendarPreferences.remindersEnabled}
-              >
-                ${REMINDER_TIMING_OPTIONS.map(
-                  (option) => html`<option key=${option} value=${option}>${option}</option>`,
-                )}
-              </select>
-            </label>
-          </div>
-        </details>
-
-        <details className="settings-list-row">
-          <summary>
-            <span>Scheduling</span>
-            <small>${routineDraft.preferredDailyWorkloadMinutes ? formatDurationFromMinutes(Number(routineDraft.preferredDailyWorkloadMinutes)) : "Set limits"}</small>
-          </summary>
-          <div className="settings-row-body">
-            <p>These preferences help VIRELI suggest realistic blocks without filling every open minute.</p>
-            <div className="field-stack">
-              <${DurationScrollPicker}
-                label="Preferred daily workload hours"
-                value=${routineDraft.preferredDailyWorkloadMinutes}
-                options=${DURATION_PICKER_OPTIONS}
-                onChange=${(value) => onRoutineChange("preferredDailyWorkloadMinutes", value)}
-              />
-            </div>
-            <div className="field-stack">
-              <${DurationScrollPicker}
-                label="Preferred work interval"
-                value=${routineDraft.preferredWorkIntervalMinutes}
-                options=${INTERVAL_PICKER_OPTIONS}
-                onChange=${(value) => onRoutineChange("preferredWorkIntervalMinutes", value)}
-              />
-            </div>
-            <label className="field-stack">
-              <span>Mood influence strength</span>
-              <select
-                className="planning-input"
-                value=${profile.schedulingPreferences?.moodInfluenceStrength || "Medium"}
-                onChange=${(event) => onSchedulingPreferenceChange("moodInfluenceStrength", event.target.value)}
-              >
-                ${["Off", "Light", "Medium", "Strong"].map((option) => html`<option key=${option} value=${option}>${option}</option>`)}
-              </select>
-            </label>
-            <div className="settings-action-row">
-              <button type="button" className="primary-button" onClick=${onSaveRoutine}>
-                Save scheduling preferences
-              </button>
-              <button type="button" className="secondary-button" onClick=${() => onTabChange("routine")}>
-                Open Your Routine
-              </button>
-            </div>
-          </div>
-        </details>
-
-        <details className="settings-list-row">
-          <summary>
-            <span>Privacy & Data</span>
-            <small>Local storage</small>
-          </summary>
-          <div className="settings-row-body">
-            <p>VIRELI stores your schedule, mood check-ins, routine, Daily Log, and personalization data on this device so planning can keep working between visits.</p>
-            <div className="soft-note">
-              <p>VIRELI keeps the visible account flow simple and does not connect to outside calendars or inboxes.</p>
-            </div>
-          </div>
-        </details>
-
-        <details className="settings-list-row">
-          <summary>
-            <span>Appearance</span>
-            <small>Automatic</small>
-          </summary>
-          <div className="settings-row-body">
-            <p>VIRELI keeps a consistent red-and-white look. Mood changes recommendations, not the visual theme.</p>
-            <label className="settings-toggle-row">
-              <input
-                type="checkbox"
-                checked=${calendarPreferences.noGuiltLanguage}
-                onChange=${(event) => onCalendarPreferenceChange("noGuiltLanguage", event.target.checked)}
-              />
-              <span>No guilt language</span>
-            </label>
-          </div>
-        </details>
-
-        <details className="settings-list-row">
-          <summary>
-            <span>Daily Logs</span>
-            <small>${dailyLogs.length}</small>
-          </summary>
-          <div className="settings-row-body">
-            <p>Review saved reflections from the Daily Log tab.</p>
-
-          <div className="history-list">
-            ${dailyLogs.length
-              ? dailyLogs.map(
-                  (log) => html`
-                    <details key=${log.id} className="history-item">
-                      <summary>
-                        <span>${log.rating || "Daily Log"}</span>
-                        <small>${formatDateTime(log.updatedAt)}</small>
-                      </summary>
-                      <div className="history-messages">
-                        <p><strong>Could it have gone better:</strong> ${log.couldBeBetter || "Not set"}</p>
-                        <p><strong>Activities:</strong> ${(log.activities || []).filter(Boolean).join(", ") || "Not listed"}</p>
-                        <p><strong>Went well:</strong> ${log.wentWell || "Not listed"}</p>
-                        <p><strong>Did not go well:</strong> ${log.didNotGoWell || "Not listed"}</p>
-                        ${log.highlight
-                          ? html`<p><strong>Highlight:</strong> ${log.highlight}</p>`
-                          : null}
-                      </div>
-                    </details>
-                  `,
-                )
-              : html`<div className="soft-note"><p>No Daily Logs saved yet.</p></div>`}
-          </div>
-          </div>
-        </details>
-
-      </div>
+          `}
     </${motion.section}>
   `;
 }
@@ -7478,6 +7468,8 @@ function App() {
   const [askHistory, setAskHistory] = useState(loadAskHistory);
   const [profile, setProfile] = useState(loadProfile);
   const [profileDraft, setProfileDraft] = useState(() => loadProfile());
+  const [accountStep, setAccountStep] = useState("username");
+  const [accountUsername, setAccountUsername] = useState("");
   const [accountPassword, setAccountPassword] = useState("");
   const [accountPasswordConfirm, setAccountPasswordConfirm] = useState("");
   const [accountPasswordVisible, setAccountPasswordVisible] = useState(false);
@@ -7723,17 +7715,10 @@ function App() {
     });
   }
 
-  function handleSetupAboutContinue() {
+  function handleSetupAboutContinue(aboutDraft = profileDraft) {
     advanceSetupStep(2, {
-      name: profileDraft.name.trim() || profile.name,
-      primaryUse: profileDraft.primaryUse || profile.primaryUse,
-    });
-  }
-
-  function handleSetupModeSelect(primaryUse) {
-    advanceSetupStep(2, {
-      name: profileDraft.name.trim() || profile.name || "VIRELI user",
-      primaryUse,
+      name: aboutDraft.name.trim(),
+      primaryUse: aboutDraft.primaryUse,
     });
   }
 
@@ -7741,7 +7726,7 @@ function App() {
     setMoodCheckInComplete(true);
     advanceSetupStep(3, {
       moodSelection: moodSelection || "skipped",
-      moodNote: moodNote.trim(),
+      moodNote: "",
     });
   }
 
@@ -7782,6 +7767,31 @@ function App() {
       ...currentDraft,
       [field]: value,
     }));
+  }
+
+  function handleAccountUsernameChange(value) {
+    setAccountError("");
+    setAccountUsername(value);
+  }
+
+  function handleAccountUsernameContinue(event) {
+    event?.preventDefault?.();
+    const username = accountUsername.trim();
+    if (!username) {
+      setAccountError("Enter a username to continue.");
+      return;
+    }
+    if (username.length < 3) {
+      setAccountError("Use at least 3 characters for your username.");
+      return;
+    }
+    setAccountError("");
+    setAccountStep("password");
+  }
+
+  function handleAccountBack() {
+    setAccountError("");
+    setAccountStep("username");
   }
 
   function handlePasswordDraftChange(field, value) {
@@ -7900,8 +7910,10 @@ function App() {
       updatedAt: now,
     };
 
+    const nextDraft = { ...nextProfile, name: "", primaryUse: "" };
     setProfile(nextProfile);
-    setProfileDraft(nextProfile);
+    setProfileDraft(nextDraft);
+    setRoutineDraft(getBlankSetupRoutineDraft(routine));
     setProfileStepComplete(true);
     setLaunchSetupStep(1);
     setLaunchSetupComplete(false);
@@ -7940,8 +7952,10 @@ function App() {
       updatedAt: now,
     };
 
+    const nextDraft = { ...nextProfile, name: "", primaryUse: "" };
     setProfile(nextProfile);
-    setProfileDraft(nextProfile);
+    setProfileDraft(nextDraft);
+    setRoutineDraft(getBlankSetupRoutineDraft(routine));
     setProfileStepComplete(true);
     setLaunchSetupStep(1);
     setLaunchSetupComplete(false);
@@ -7950,7 +7964,7 @@ function App() {
   async function handleVireliAccountSubmit(event) {
     event?.preventDefault?.();
 
-    const name = profileDraft.name.trim();
+    const name = accountUsername.trim();
 
     if (!name) {
       setAccountError("Enter a username to create your VIRELI account.");
@@ -7992,6 +8006,8 @@ function App() {
       }
 
       completeAuthenticatedProfile(payload.user, "vireli-account");
+      setAccountStep("username");
+      setAccountUsername("");
       setAccountPassword("");
       setAccountPasswordConfirm("");
       setAccountError("");
@@ -8028,11 +8044,15 @@ function App() {
       updatedAt: now,
     };
 
+    const nextDraft = { ...nextProfile, name: "", primaryUse: "" };
     setProfile(nextProfile);
-    setProfileDraft(nextProfile);
+    setProfileDraft(nextDraft);
+    setRoutineDraft(getBlankSetupRoutineDraft(routine));
     setProfileStepComplete(true);
     setLaunchSetupStep(1);
     setLaunchSetupComplete(false);
+    setAccountStep("username");
+    setAccountUsername("");
     setAccountPassword("");
     setAccountPasswordConfirm("");
     setAccountError("");
@@ -8288,10 +8308,13 @@ function App() {
     };
 
     setProfile(nextProfile);
-    setProfileDraft(nextProfile);
+    setProfileDraft({ ...nextProfile, name: "", primaryUse: "" });
+    setRoutineDraft(getBlankSetupRoutineDraft(routine));
     setProfileStepComplete(true);
     setLaunchSetupStep(1);
     setLaunchSetupComplete(false);
+    setAccountStep("username");
+    setAccountUsername("");
     setAccountPassword("");
     setAccountPasswordConfirm("");
     setAccountError("");
@@ -9508,7 +9531,9 @@ function App() {
   }
 
   function handleDailyLogSubmit() {
-    const canSubmit = dailyLogDraft.rating && dailyLogDraft.highlight.trim();
+    const wentWell = dailyLogDraft.wentWell.trim();
+    const couldBeBetter = dailyLogDraft.couldBeBetter.trim();
+    const canSubmit = Boolean(wentWell || couldBeBetter);
 
     if (!canSubmit) {
       return;
@@ -9517,7 +9542,12 @@ function App() {
     const nextLogs = saveDailyLog(
       {
         ...dailyLogDraft,
-        activities: dailyLogDraft.highlight.trim() ? [dailyLogDraft.highlight.trim()] : [],
+        rating: dailyLogDraft.rating || "",
+        wentWell,
+        couldBeBetter,
+        didNotGoWell: couldBeBetter,
+        highlight: wentWell,
+        activities: wentWell ? [wentWell] : [],
       },
       dailyLogs,
     );
@@ -9688,13 +9718,16 @@ function App() {
           ? html`
                 <${AccountScreen}
                   key="account"
-                  profileDraft=${profileDraft}
+                  accountStep=${accountStep}
+                  accountUsername=${accountUsername}
                   accountPassword=${accountPassword}
                   accountPasswordConfirm=${accountPasswordConfirm}
                   accountPasswordVisible=${accountPasswordVisible}
                   accountStatus=${accountStatus}
                   accountError=${accountError}
-                  onProfileDraftChange=${handleProfileDraftChange}
+                  onAccountUsernameChange=${handleAccountUsernameChange}
+                  onAccountUsernameContinue=${handleAccountUsernameContinue}
+                  onAccountBack=${handleAccountBack}
                   onAccountPasswordChange=${(value) => {
                     setAccountError("");
                     setAccountPassword(value);
@@ -9714,7 +9747,7 @@ function App() {
                   key="setup-about"
                   profileDraft=${profileDraft}
                   onProfileDraftChange=${handleProfileDraftChange}
-                  onModeSelect=${handleSetupModeSelect}
+                  onContinue=${handleSetupAboutContinue}
                 />
               `
           : !launchSetupComplete && currentSetupStep === 2
@@ -9722,9 +9755,7 @@ function App() {
                 <${MoodCheckInScreen}
                   key="mood"
                   moodSelection=${moodSelection}
-                  moodNote=${moodNote}
                   onMoodSelect=${handleMoodSelect}
-                  onMoodNoteChange=${setMoodNote}
                   onMoodContinue=${handleMoodContinue}
                 />
               `

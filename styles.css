@@ -83,6 +83,303 @@
   --circle-fill-6: rgba(208, 216, 227, 0.5);
 }
 
+/* Day 18 polish and responsive hardening */
+.opening-word {
+  text-shadow:
+    0 2px 0 rgba(255, 255, 255, 0.14),
+    0 8px 18px rgba(60, 0, 10, 0.34),
+    0 28px 72px rgba(46, 0, 12, 0.42);
+}
+
+.setup-mode-description,
+.mood-selection-note,
+.account-step-summary {
+  width: 100%;
+  padding: 0.95rem 1rem;
+  border: 1px solid rgba(var(--accent-rgb), 0.12);
+  border-radius: 1.05rem;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--text-soft);
+  box-shadow: 0 12px 28px rgba(var(--accent-deep-rgb), 0.06);
+}
+
+.setup-mode-description strong,
+.account-step-summary strong {
+  display: block;
+  color: var(--text-main);
+  font-family: "Sora", sans-serif;
+  font-weight: 900;
+}
+
+.setup-mode-description p,
+.mood-selection-note {
+  margin: 0.25rem 0 0;
+  line-height: 1.6;
+}
+
+.account-step-summary {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.account-step-summary span {
+  color: var(--text-soft);
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.account-step-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.account-step-actions > * {
+  flex: 1 1 150px;
+}
+
+.topbar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.85rem;
+  max-width: 100%;
+}
+
+.topbar-nav {
+  max-width: 100%;
+  min-width: 0;
+  padding: 0.1rem 0.2rem 0.25rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+.topbar-nav-button {
+  flex: 0 0 auto;
+  min-width: max-content;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar-actions {
+  min-width: 0;
+}
+
+.sidebar-nav {
+  max-height: calc(100vh - 330px);
+  overflow-y: auto;
+  padding-right: 0.15rem;
+}
+
+.nav-button,
+.mobile-nav-button,
+.secondary-button,
+.primary-button,
+.settings-menu-row,
+.settings-back-button {
+  min-height: 44px;
+}
+
+.message-bubble,
+.selected-day-item,
+.history-item,
+.settings-menu-row,
+.settings-detail-screen,
+.feature-card,
+.planner-chip,
+.month-event-chip {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.message-bubble {
+  max-width: min(88%, 46rem);
+}
+
+.chat-input-row,
+.chat-input-row input {
+  min-width: 0;
+}
+
+.calendar-detail-actions,
+.calendar-form-actions,
+.settings-action-row,
+.card-footer-row {
+  flex-wrap: wrap;
+}
+
+.selected-day-item {
+  align-items: flex-start;
+}
+
+.selected-day-item.is-meeting {
+  border-color: rgba(105, 116, 138, 0.24);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(244, 247, 251, 0.9));
+}
+
+.selected-day-item.is-meeting strong {
+  color: #202938;
+}
+
+.daily-log-question {
+  margin-top: 1rem;
+}
+
+.daily-log-question > span {
+  color: var(--text-main);
+  font-family: "Sora", sans-serif;
+  font-size: clamp(1.05rem, 2vw, 1.35rem);
+  font-weight: 850;
+}
+
+.daily-writing-area {
+  min-height: 150px;
+  resize: vertical;
+}
+
+.settings-menu-list {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 880px;
+}
+
+.settings-menu-row,
+.settings-detail-screen {
+  border: 1px solid rgba(var(--accent-rgb), 0.1);
+  border-radius: 1.05rem;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 12px 28px rgba(var(--accent-deep-rgb), 0.06);
+}
+
+.settings-menu-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+  padding: 1rem;
+  color: var(--text-main);
+  text-align: left;
+  font-weight: 950;
+}
+
+.settings-menu-row::after {
+  content: "Open";
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 0.35rem 0.6rem;
+  background: rgba(var(--accent-rgb), 0.08);
+  color: var(--red-deep);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.settings-menu-row small {
+  color: var(--text-soft);
+  font-weight: 850;
+}
+
+.settings-detail-screen {
+  display: grid;
+  gap: 1rem;
+  max-width: 920px;
+  padding: clamp(1rem, 2vw, 1.25rem);
+}
+
+.settings-back-button {
+  justify-self: start;
+  border: 1px solid rgba(var(--accent-rgb), 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--red-deep);
+  font-weight: 900;
+  padding: 0.62rem 0.9rem;
+}
+
+.settings-detail-heading h2 {
+  margin: 0.25rem 0 0;
+  color: var(--text-main);
+  font-size: clamp(1.55rem, 4vw, 2.35rem);
+}
+
+.settings-detail-heading p,
+.settings-detail-body {
+  color: var(--text-soft);
+}
+
+.settings-detail-body {
+  display: grid;
+  gap: 0.95rem;
+}
+
+@media (max-width: 980px) {
+  .topbar {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .topbar-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 760px) {
+  .topbar {
+    position: relative;
+    top: 0;
+    padding: 0.85rem;
+  }
+
+  .topbar-nav {
+    order: 3;
+    grid-column: 1 / -1;
+  }
+
+  .topbar-nav-button {
+    max-width: none;
+  }
+
+  .mobile-bottom-nav {
+    display: flex;
+    overflow-x: auto;
+    justify-content: flex-start;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .mobile-nav-button {
+    flex: 0 0 auto;
+    min-width: 84px;
+  }
+
+  .setup-choice-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .message-bubble {
+    max-width: 94%;
+  }
+
+  .settings-menu-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .settings-menu-row::after {
+    align-self: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .opening-brand-motion,
+  .opening-word,
+  .opening-credit {
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+  }
+}
+
 body[data-theme="good"] {
   --accent-rgb: 52, 131, 224;
   --accent-deep-rgb: 11, 82, 165;
@@ -4847,5 +5144,159 @@ summary:focus-visible {
   .opening-logo-shell {
     width: 5.5rem;
     height: 5.5rem;
+  }
+}
+
+/* Final Day 18 cascade overrides */
+.opening-word {
+  text-shadow:
+    0 2px 0 rgba(255, 255, 255, 0.14),
+    0 8px 18px rgba(60, 0, 10, 0.34),
+    0 28px 72px rgba(46, 0, 12, 0.42);
+}
+
+.topbar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.85rem;
+  max-width: 100%;
+}
+
+.topbar-nav {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 0.1rem 0.2rem 0.25rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+.topbar-nav-button {
+  flex: 0 0 auto;
+  min-width: max-content;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobile-bottom-nav {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.message-bubble,
+.selected-day-item,
+.history-item,
+.settings-menu-row,
+.settings-detail-screen,
+.feature-card,
+.planner-chip,
+.month-event-chip {
+  overflow-wrap: anywhere;
+}
+
+.message-bubble {
+  max-width: min(88%, 46rem);
+}
+
+.settings-menu-list {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 880px;
+}
+
+.settings-menu-row,
+.settings-detail-screen {
+  border: 1px solid rgba(var(--accent-rgb), 0.1);
+  border-radius: 1.05rem;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 12px 28px rgba(var(--accent-deep-rgb), 0.06);
+}
+
+.settings-menu-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+  min-height: 64px;
+  padding: 1rem;
+  color: var(--text-main);
+  text-align: left;
+  font-weight: 950;
+}
+
+.settings-menu-row::after {
+  content: "Open";
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 0.35rem 0.6rem;
+  background: rgba(var(--accent-rgb), 0.08);
+  color: var(--red-deep);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.settings-menu-row small {
+  color: var(--text-soft);
+  font-weight: 850;
+}
+
+.settings-detail-screen {
+  display: grid;
+  gap: 1rem;
+  max-width: 920px;
+  padding: clamp(1rem, 2vw, 1.25rem);
+}
+
+.settings-back-button {
+  justify-self: start;
+  min-height: 44px;
+  border: 1px solid rgba(var(--accent-rgb), 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--red-deep);
+  font-weight: 900;
+  padding: 0.62rem 0.9rem;
+}
+
+.settings-detail-heading h2 {
+  margin: 0.25rem 0 0;
+  color: var(--text-main);
+  font-size: clamp(1.55rem, 4vw, 2.35rem);
+}
+
+.settings-detail-heading p,
+.settings-detail-body {
+  color: var(--text-soft);
+}
+
+.settings-detail-body {
+  display: grid;
+  gap: 0.95rem;
+}
+
+@media (max-width: 760px) {
+  .topbar {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .topbar-nav {
+    order: 3;
+    grid-column: 1 / -1;
+  }
+
+  .mobile-bottom-nav {
+    display: flex;
+    justify-content: flex-start;
+  }
+
+  .mobile-nav-button {
+    flex: 0 0 auto;
+    min-width: 84px;
+  }
+
+  .message-bubble {
+    max-width: 94%;
   }
 }
