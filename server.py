@@ -322,6 +322,24 @@ def create_vireli_user(username, password):
     return True, HTTPStatus.OK, {"authenticated": True, "user": row_to_user(row)}
 
 
+def check_vireli_username(username):
+    normalized_username = normalize_username(username)
+    valid, error = validate_vireli_account(normalized_username, "temporary-password")
+    if not valid:
+        return False, HTTPStatus.BAD_REQUEST, {"available": False, "error": error}
+
+    with get_database_connection() as connection:
+        existing = connection.execute(
+            "SELECT id FROM users WHERE username = ?",
+            (normalized_username,),
+        ).fetchone()
+
+    if existing:
+        return False, HTTPStatus.CONFLICT, {"available": False, "error": "That username is already taken."}
+
+    return True, HTTPStatus.OK, {"available": True, "username": normalized_username}
+
+
 def login_vireli_user(username, password):
     normalized_username = normalize_username(username)
     with get_database_connection() as connection:
@@ -891,6 +909,17 @@ class VireliRequestHandler(SimpleHTTPRequestHandler):
                 },
                 {"Set-Cookie": self.build_session_cookie_header(user["id"])},
             )
+            return
+
+        if route == "/api/auth/vireli/check-username":
+            try:
+                payload = self.read_json_body()
+            except (ValueError, json.JSONDecodeError):
+                self.send_json(HTTPStatus.BAD_REQUEST, {"error": "Invalid JSON"})
+                return
+
+            ok, status, response_payload = check_vireli_username(payload.get("username"))
+            self.send_json(status, response_payload)
             return
 
         if route in ("/api/auth/vireli/register", "/api/auth/vireli/login"):

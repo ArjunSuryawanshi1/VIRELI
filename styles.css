@@ -4732,6 +4732,9 @@ textarea {
   position: sticky;
   top: 1rem;
   z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .topbar-nav {
@@ -4755,6 +4758,7 @@ textarea {
   color: var(--text-soft);
   font-weight: 850;
   white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .topbar-nav-button:hover,
@@ -4917,6 +4921,125 @@ textarea {
   text-align: left;
 }
 
+.setup-transition-note {
+  margin: 0.85rem 0 0;
+  color: var(--text-soft);
+  font-weight: 850;
+  text-align: center;
+}
+
+.school-hours-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+  margin-top: 1rem;
+}
+
+.horizontal-schedule-view,
+.agenda-view {
+  display: grid;
+  gap: 1rem;
+}
+
+.horizontal-schedule-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.horizontal-schedule-head h3 {
+  margin: 0;
+}
+
+.horizontal-schedule-head span {
+  color: var(--text-soft);
+  font-weight: 850;
+}
+
+.horizontal-timeline {
+  display: flex;
+  min-height: 9rem;
+  gap: 0.35rem;
+  overflow-x: auto;
+  padding: 0.35rem 0.1rem 0.75rem;
+  scrollbar-width: thin;
+}
+
+.horizontal-time-block {
+  min-width: 7.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(var(--accent-rgb), 0.12);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.76);
+  color: var(--text-main);
+}
+
+.horizontal-time-block.is-free {
+  background: rgba(240, 253, 244, 0.76);
+  border-color: rgba(22, 163, 74, 0.2);
+}
+
+.horizontal-time-block.is-routine {
+  background: rgba(248, 250, 252, 0.9);
+}
+
+.horizontal-time-block.is-plan {
+  background: rgba(var(--accent-soft-rgb), 0.52);
+}
+
+.horizontal-time-block strong {
+  overflow-wrap: anywhere;
+}
+
+.horizontal-time-block span {
+  color: var(--text-soft);
+  font-size: 0.8rem;
+  font-weight: 850;
+}
+
+.routine-collections-card {
+  grid-column: span 2;
+}
+
+.routine-collection-list,
+.routine-collection-activities {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.routine-collection-card {
+  padding: 0.8rem;
+  border: 1px solid rgba(var(--accent-rgb), 0.12);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.64);
+}
+
+.routine-collection-card summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+  cursor: pointer;
+  list-style: none;
+}
+
+.routine-collection-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.routine-collection-activities {
+  margin-top: 0.9rem;
+}
+
+.routine-collection-row {
+  grid-template-columns: minmax(10rem, 1.3fr) minmax(8rem, 0.8fr) minmax(8rem, 0.8fr) minmax(7rem, 0.6fr) minmax(8rem, 0.7fr) auto;
+}
+
 .week-calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -5003,13 +5126,31 @@ summary:focus-visible {
     grid-template-columns: 1fr;
   }
 
+  .school-hours-grid,
+  .routine-collections-card {
+    grid-template-columns: 1fr;
+    grid-column: auto;
+  }
+
+  .routine-collection-card summary,
+  .routine-collection-row {
+    grid-template-columns: 1fr;
+  }
+
+  .horizontal-schedule-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
   .today-schedule-card,
   .starter-card {
     grid-column: auto;
   }
 
   .topbar-nav {
-    display: none;
+    display: flex;
+    min-width: 0;
+    padding-bottom: 0.1rem;
   }
 
   .routine-builder-row {
@@ -5071,27 +5212,6 @@ summary:focus-visible {
     overflow: hidden;
     clip: rect(0 0 0 0);
     white-space: nowrap;
-  }
-
-  .topbar-actions {
-    flex: 1;
-    justify-content: flex-end;
-  }
-
-  .topbar-status-menu {
-    flex: 1;
-  }
-
-  .topbar-status-menu summary {
-    width: 100%;
-    max-width: 11rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .topbar-dropdown {
-    right: -3rem;
   }
 
   .thought-actions,

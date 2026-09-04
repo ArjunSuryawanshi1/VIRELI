@@ -1,9 +1,9 @@
-const VIRELI_CACHE = "vireli-day18-polish-responsive-shell-v3";
+const VIRELI_CACHE = "vireli-day19-consistency-planner-shell-v4";
 const VIRELI_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=day18-polish-responsive-20260901b",
-  "./script.js?v=day18-polish-responsive-20260901b",
+  "./styles.css?v=day19-consistency-planner-20260903d",
+  "./script.js?v=day19-consistency-planner-20260903d",
   "./manifest.webmanifest",
   "./icons/vireli-icon.svg",
 ];
