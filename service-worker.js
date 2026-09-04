@@ -1,9 +1,9 @@
-const VIRELI_CACHE = "vireli-day19-consistency-planner-shell-v4";
+const VIRELI_CACHE = "vireli-day20-sidebar-simplification-shell-v1";
 const VIRELI_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=day19-consistency-planner-20260903d",
-  "./script.js?v=day19-consistency-planner-20260903d",
+  "./styles.css?v=day20-sidebar-simplification-20260904",
+  "./script.js?v=day20-sidebar-simplification-20260904",
   "./manifest.webmanifest",
   "./icons/vireli-icon.svg",
 ];

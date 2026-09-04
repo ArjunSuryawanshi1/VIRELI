@@ -7,20 +7,20 @@ const NAV_ITEMS = [
   { id: "assignments", label: "Assignments" },
   { id: "tasks", label: "Tasks" },
   { id: "meetings", label: "Meetings" },
+  { id: "check-in", label: "Check In" },
   { id: "routine", label: "Your Routine" },
   { id: "ask", label: "Ask VIRELI" },
   { id: "calendar", label: "Calendar" },
-  { id: "improve", label: "How can we improve" },
   { id: "settings", label: "Settings" },
 ];
 
 function getPrimaryNavItems(primaryUse = "School") {
   const visibleIds =
     primaryUse === "Work"
-      ? ["home", "tasks", "meetings", "ask", "calendar", "routine", "improve", "settings"]
+      ? ["home", "tasks", "meetings", "check-in", "ask", "calendar", "routine", "settings"]
       : primaryUse === "Other"
-        ? ["home", "tasks", "ask", "calendar", "routine", "improve", "settings"]
-        : ["home", "assignments", "tasks", "ask", "calendar", "routine", "improve", "settings"];
+        ? ["home", "tasks", "check-in", "ask", "calendar", "routine", "settings"]
+        : ["home", "assignments", "tasks", "check-in", "ask", "calendar", "routine", "settings"];
   return visibleIds
     .map((id) => NAV_ITEMS.find((item) => item.id === id))
     .filter(Boolean);
@@ -32,27 +32,27 @@ function getMobileNavItems(primaryUse = "School") {
         { id: "home", label: "Home" },
         { id: "tasks", label: "Tasks" },
         { id: "meetings", label: "Meetings" },
+        { id: "check-in", label: "Check In" },
         { id: "ask", label: "Ask" },
         { id: "calendar", label: "Calendar" },
-        { id: "routine", label: "Routine" },
         { id: "settings", label: "Settings" },
       ]
     : primaryUse === "Other"
       ? [
           { id: "home", label: "Home" },
           { id: "tasks", label: "Tasks" },
+          { id: "check-in", label: "Check In" },
           { id: "ask", label: "Ask" },
           { id: "calendar", label: "Calendar" },
-          { id: "routine", label: "Routine" },
           { id: "settings", label: "Settings" },
         ]
     : [
         { id: "home", label: "Home" },
         { id: "assignments", label: "Assignments" },
         { id: "tasks", label: "Tasks" },
+        { id: "check-in", label: "Check In" },
         { id: "ask", label: "Ask" },
         { id: "calendar", label: "Calendar" },
-        { id: "routine", label: "Routine" },
         { id: "settings", label: "Settings" },
       ];
 }
@@ -62,7 +62,6 @@ const HOMEWORK_STORAGE_KEY = "vireli.homework.v1";
 const PROFILE_STORAGE_KEY = "vireli.profile.v1";
 const SCENARIO_AGENT_STORAGE_KEY = "vireli.scenarioAgent.v1";
 const ASK_HISTORY_STORAGE_KEY = "vireli.askHistory.v1";
-const FEEDBACK_STORAGE_KEY = "vireli.feedback.v1";
 const RECOMMENDATION_STORAGE_KEY = "vireli.recommendations.v1";
 const CALENDAR_TASK_STORAGE_KEY = "vireli.calendarTasks.v1";
 const CALENDAR_PREFERENCES_STORAGE_KEY = "vireli.calendarPreferences.v1";
@@ -184,6 +183,11 @@ const EMPTY_CALENDAR_TASK_DRAFT = {
   completed: false,
 };
 
+const DEFAULT_DAILY_WORKLOAD_MINUTES = 240;
+const DEFAULT_TASK_DURATION_MINUTES = 30;
+const AUTOMATIC_INTERVAL_MINUTES = 45;
+const AUTOMATIC_INTERVAL_BREAK_MINUTES = 5;
+
 const EMPTY_THOUGHT_DRAFT = "";
 
 const EMPTY_CALENDAR_PREFERENCES = {
@@ -192,22 +196,17 @@ const EMPTY_CALENDAR_PREFERENCES = {
   noGuiltLanguage: true,
 };
 
-const EMPTY_FEEDBACK_DRAFT = {
-  area: "",
-  text: "",
-};
-
 function getBlankSetupRoutineDraft(baseRoutine = EMPTY_ROUTINE_DRAFT) {
   return {
     ...baseRoutine,
-    preferredDailyWorkloadMinutes: "",
+    preferredDailyWorkloadMinutes: String(DEFAULT_DAILY_WORKLOAD_MINUTES),
     preferredWorkIntervalMinutes: "",
     preferredWorkloadLabel: "",
     preferredWorkIntervalLabel: "",
   };
 }
 
-const APP_VERSION = "day19-consistency-planner-20260903d";
+const APP_VERSION = "day20-sidebar-simplification-20260904";
 const INTRO_ANIMATION_SECONDS = 1.35;
 const INTRO_SCREEN_DURATION_MS = 3200;
 const THEME_TRANSITION_DURATION_MS = 2000;
@@ -218,14 +217,6 @@ const ASK_HISTORY_LIMIT = 16;
 const ASK_RECENT_WINDOW_DAYS = 7;
 const CONSISTENCY_EVENT_LIMIT = 120;
 const MAX_ROUTINE_COLLECTIONS = 3;
-const FEEDBACK_QUICK_OPTIONS = [
-  "This wasn’t realistic",
-  "Wrong priority",
-  "Bad time",
-  "This is an event, not an assignment",
-  "Don’t recommend this again",
-];
-
 const SCHEDULE_OPTIONS = ["Morning", "Afternoon", "Evening", "Custom"];
 const PRIORITY_OPTIONS = ["Low", "Normal", "High"];
 const CALENDAR_ITEM_TYPE_OPTIONS = ["Task", "Event", "Meeting"];
@@ -261,7 +252,7 @@ const PRIMARY_USE_DESCRIPTIONS = {
   Other: "VIRELI will focus on general personal organization, flexible tasks, routines, and the things you want to keep track of.",
 };
 const ROUTINE_DAY_OPTIONS = ["Every day", "Weekdays", "Weekends", "Custom"];
-const SETUP_STEPS = ["Your Name", "Check In", "VIRELI Mode", "Schedule Basics"];
+const SETUP_STEPS = ["Your Name", "VIRELI Mode", "Schedule"];
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const REMINDER_TIMING_OPTIONS = [
   "At planned time",
@@ -340,14 +331,6 @@ const RECOVERY_OPTIONS = [
     copy: "Use a trusted backup recovery option when accounts are live.",
   },
 ];
-const FEEDBACK_AREAS = [
-  "Something didn’t work",
-  "VIRELI misunderstood me",
-  "Scheduling problem",
-  "Feature idea",
-  "Design feedback",
-];
-
 const MOOD_DETAILS = {
   unchecked: {
     label: "Not set",
@@ -853,10 +836,6 @@ function getRecentAskHistory(entries) {
 
 function getArchivedAskHistory(entries) {
   return entries.filter((entry) => !isRecentChat(entry));
-}
-
-function loadFeedbackEntries() {
-  return readPersistentArray(FEEDBACK_STORAGE_KEY);
 }
 
 function getClassLabel(classes, classId, fallback = "Class") {
@@ -1428,7 +1407,19 @@ function getFreeTimeWindows(schedule) {
 
 function getPreferredWorkloadMinutes(routine = EMPTY_ROUTINE_DRAFT) {
   const minutes = Number(routine.preferredDailyWorkloadMinutes);
-  return Number.isFinite(minutes) && minutes > 0 ? minutes : 180;
+  return Number.isFinite(minutes) && minutes > 0 ? minutes : DEFAULT_DAILY_WORKLOAD_MINUTES;
+}
+
+function getAutomaticWorkIntervalMinutes(routine = EMPTY_ROUTINE_DRAFT) {
+  const minutes = Number(routine.preferredWorkIntervalMinutes);
+  return Number.isFinite(minutes) && minutes > 0 ? minutes : AUTOMATIC_INTERVAL_MINUTES;
+}
+
+function getScheduleFootprintMinutes(durationMinutes = DEFAULT_TASK_DURATION_MINUTES, routine = EMPTY_ROUTINE_DRAFT) {
+  const duration = Math.max(5, Number(durationMinutes) || DEFAULT_TASK_DURATION_MINUTES);
+  const interval = getAutomaticWorkIntervalMinutes(routine);
+  const breakCount = Math.max(0, Math.ceil(duration / interval) - 1);
+  return duration + breakCount * AUTOMATIC_INTERVAL_BREAK_MINUTES;
 }
 
 function getScheduledWorkMinutes(homeworkItems = [], dateValue = getDateInputValue()) {
@@ -1725,9 +1716,10 @@ function getMoodAdjustedDuration(item, mood = "") {
   return base;
 }
 
-function findBestFreeWindow(schedule, durationMinutes = 45) {
+function findBestFreeWindow(schedule, durationMinutes = 45, routine = EMPTY_ROUTINE_DRAFT) {
   const freeWindows = getFreeTimeWindows(schedule);
-  return freeWindows.find((windowBlock) => windowBlock.endMinutes - windowBlock.startMinutes >= durationMinutes)
+  const neededMinutes = getScheduleFootprintMinutes(durationMinutes, routine);
+  return freeWindows.find((windowBlock) => windowBlock.endMinutes - windowBlock.startMinutes >= neededMinutes)
     || freeWindows[0]
     || null;
 }
@@ -1776,7 +1768,7 @@ function getNextAssignmentRecommendation({
   }
 
   const duration = getMoodAdjustedDuration(nextItem, mood);
-  const bestWindow = findBestFreeWindow(remainingSchedule, duration);
+  const bestWindow = findBestFreeWindow(remainingSchedule, duration, routine);
   const startTime = nextItem.scheduledTime || (bestWindow ? minutesToTimeValue(bestWindow.startMinutes) : "");
 
   return {
@@ -3823,7 +3815,7 @@ function SetupAboutScreen({
           transition=${{ duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
         >
           <div className="mood-heading mood-heading-centered">
-            <p className="eyebrow">Setup 1 of 4 · Your Name</p>
+            <p className="eyebrow">Setup 1 of 3 · Your Name</p>
             <h2 className="font-display">Your Name</h2>
           </div>
 
@@ -3850,80 +3842,13 @@ function SetupAboutScreen({
   `;
 }
 
-function MoodCheckInScreen({
-  moodSelection,
-  onMoodSelect,
-}) {
-  const [transitionMood, setTransitionMood] = useState("");
-
-  function selectMood(optionId) {
-    setTransitionMood(optionId);
-    onMoodSelect(optionId);
-  }
-
-  return html`
-    <${motion.section}
-      className="mood-screen min-h-screen relative flex items-center justify-center overflow-hidden px-5 py-8 sm:px-8"
-      initial=${{ opacity: 0 }}
-      animate=${{ opacity: 1 }}
-      exit=${{ opacity: 0, scale: 0.985 }}
-      transition=${{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
-    >
-      <${GraphBackdrop} />
-
-      <div className="relative z-10 mx-auto flex w-full max-w-5xl flex-col items-center gap-5">
-        <${SetupProgress} step=${2} />
-        <${motion.div}
-          className="mood-panel mood-panel-centered"
-          initial=${{ opacity: 0, y: 28 }}
-          animate=${{ opacity: 1, y: 0 }}
-          transition=${{ duration: 0.7, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
-        >
-            <div className="mood-heading mood-heading-centered">
-            <p className="eyebrow">Setup 2 of 4 · Check In</p>
-            <h2 className="font-display">Check In</h2>
-            <p className="tab-heading-lead">How Are You Doing Today?</p>
-          </div>
-
-          <div className="mood-grid mood-grid-centered">
-            ${MOOD_OPTIONS.map(
-              (option) => html`
-                <button
-                  key=${option.id}
-                  type="button"
-                  className=${cx(
-                    "mood-choice",
-                    moodSelection === option.id && "is-selected",
-                  )}
-                  onClick=${() => selectMood(option.id)}
-                  >
-                  <span className="mood-choice-label">${option.label}</span>
-                </button>
-              `,
-            )}
-          </div>
-          ${moodSelection
-            ? html`
-                <div className="mood-selection-note" role="status">
-                  ${MOOD_OPTIONS.find((option) => option.id === moodSelection)?.text || "VIRELI will keep today realistic."}
-                </div>
-              `
-            : null}
-          ${transitionMood ? html`<p className="setup-transition-note">Moving to the next setup step...</p>` : null}
-        </${motion.div}>
-      </div>
-    </${motion.section}>
-  `;
-}
-
 function SetupModeScreen({
   profileDraft,
   onProfileDraftChange,
   onContinue,
 }) {
   const selectedMode = profileDraft.primaryUse || "";
-  const isSchool = selectedMode === "School";
-  const canContinue = Boolean(selectedMode) && (!isSchool || (profileDraft.schoolStartTime && profileDraft.schoolEndTime));
+  const canContinue = Boolean(selectedMode);
 
   return html`
     <${motion.section}
@@ -3935,7 +3860,7 @@ function SetupModeScreen({
     >
       <${GraphBackdrop} />
       <div className="relative z-10 mx-auto flex w-full max-w-4xl flex-col items-center gap-5">
-        <${SetupProgress} step=${3} />
+        <${SetupProgress} step=${2} />
         <${motion.div}
           className="mood-panel setup-panel"
           initial=${{ opacity: 0, y: 28 }}
@@ -3943,7 +3868,7 @@ function SetupModeScreen({
           transition=${{ duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
         >
           <div className="mood-heading mood-heading-centered">
-            <p className="eyebrow">Setup 3 of 4 · VIRELI Mode</p>
+            <p className="eyebrow">Setup 2 of 3 · VIRELI Mode</p>
             <h2 className="font-display">What Are You Using VIRELI For?</h2>
           </div>
           <div className="setup-choice-grid setup-choice-grid-large">
@@ -3966,24 +3891,6 @@ function SetupModeScreen({
                 <div className="setup-mode-description" role="status">
                   <strong>${selectedMode}</strong>
                   <p>${PRIMARY_USE_DESCRIPTIONS[selectedMode]}</p>
-                </div>
-              `
-            : null}
-          ${isSchool
-            ? html`
-                <div className="school-hours-grid">
-                  <${TimeScrollPicker}
-                    label="When does school start?"
-                    help="VIRELI treats this as fixed busy time."
-                    value=${profileDraft.schoolStartTime}
-                    onChange=${(value) => onProfileDraftChange("schoolStartTime", value)}
-                  />
-                  <${TimeScrollPicker}
-                    label="When does school end?"
-                    help="Flexible work is normally kept outside this block."
-                    value=${profileDraft.schoolEndTime}
-                    onChange=${(value) => onProfileDraftChange("schoolEndTime", value)}
-                  />
                 </div>
               `
             : null}
@@ -4088,9 +3995,7 @@ function SetupScheduleBasicsScreen({
 }) {
   const canContinue = Boolean(
     routineDraft.wakeTime &&
-      routineDraft.bedTime &&
-      routineDraft.preferredDailyWorkloadMinutes &&
-      routineDraft.preferredWorkIntervalMinutes,
+      routineDraft.bedTime,
   );
   const previewRoutine = normalizeRoutineEntry(routineDraft);
   const schedule = getTodayScheduleBlocks({ routine: previewRoutine, homeworkItems: [], calendarTasks: [] });
@@ -4113,8 +4018,8 @@ function SetupScheduleBasicsScreen({
           transition=${{ duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
         >
           <div className="mood-heading">
-            <p className="eyebrow">Setup 4 of 4 · Schedule Basics</p>
-            <h2 className="font-display">Set Your Routine</h2>
+            <p className="eyebrow">Setup 3 of 3 · Schedule</p>
+            <h2 className="font-display">Set Your Schedule</h2>
           </div>
           <div className="routine-form">
             <div className="scroll-picker-grid">
@@ -4132,24 +4037,6 @@ function SetupScheduleBasicsScreen({
                   help="When do you normally go to sleep?"
                   value=${routineDraft.bedTime}
                   onChange=${(value) => onRoutineChange("bedTime", value)}
-                />
-              </div>
-              <div className="setup-picker-card">
-                <${DurationScrollPicker}
-                  label="Daily Work Time"
-                  help="How much time are you willing to spend working throughout the day?"
-                  value=${routineDraft.preferredDailyWorkloadMinutes}
-                  options=${DURATION_PICKER_OPTIONS}
-                  onChange=${(value) => onRoutineChange("preferredDailyWorkloadMinutes", value)}
-                />
-              </div>
-              <div className="setup-picker-card">
-                <${DurationScrollPicker}
-                  label="Work Interval"
-                  help="How long do you prefer to work before taking a break or switching tasks?"
-                  value=${routineDraft.preferredWorkIntervalMinutes}
-                  options=${INTERVAL_PICKER_OPTIONS}
-                  onChange=${(value) => onRoutineChange("preferredWorkIntervalMinutes", value)}
                 />
               </div>
             </div>
@@ -4174,6 +4061,49 @@ function SetupScheduleBasicsScreen({
           </${AnimatePresence}>
         </${motion.div}>
       </div>
+    </${motion.section}>
+  `;
+}
+
+function CheckInTab({ moodSelection, onMoodSelect }) {
+  const selectedMood = moodSelection || "";
+  const selectedMessage = selectedMood ? MOOD_DETAILS[selectedMood]?.response : "";
+
+  return html`
+    <${motion.section}
+      key="check-in"
+      className="tab-view"
+      initial=${{ opacity: 0, y: 20 }}
+      animate=${{ opacity: 1, y: 0 }}
+      exit=${{ opacity: 0, y: -16 }}
+      transition=${{ duration: 0.35 }}
+    >
+      <div className="tab-heading check-in-heading">
+        <div>
+          <p className="eyebrow">Check In</p>
+          <h1 className="font-display">How are you doing today?</h1>
+        </div>
+      </div>
+      <article className="feature-card check-in-card">
+        <div className="setup-choice-grid setup-choice-grid-large">
+          ${MOOD_OPTIONS.map(
+            (option) => html`
+              <button
+                key=${option.id}
+                type="button"
+                className=${cx("mood-choice setup-choice", selectedMood === option.id && "is-selected")}
+                aria-pressed=${selectedMood === option.id}
+                onClick=${() => onMoodSelect(option.id)}
+              >
+                <span className="mood-choice-label">${option.label}</span>
+              </button>
+            `,
+          )}
+        </div>
+        ${selectedMessage
+          ? html`<p className="check-in-response">${selectedMessage}</p>`
+          : null}
+      </article>
     </${motion.section}>
   `;
 }
@@ -4407,6 +4337,8 @@ function RoutineTab({
   onRoutineActivityRemove,
   onSaveRoutine,
 }) {
+  return html`<${EmptyPlannerPage} pageTitle="Your Routine" />`;
+
   const dailyActivities = Array.isArray(routineDraft.dailyActivities)
     ? routineDraft.dailyActivities
     : EMPTY_ROUTINE_DRAFT.dailyActivities;
@@ -4756,9 +4688,7 @@ function HomeTab({
   savedClasses,
   moodSelection,
   consistencyEvents,
-  chatDraft,
   onTabChange,
-  onChatDraftChange,
   onHomeworkCompleteToggle,
   onHomeworkReschedule,
   onHomeworkDelete,
@@ -4811,24 +4741,6 @@ function HomeTab({
         </div>
         <span className="date-chip free-hours-chip">${freeWindows[0] ? `${freeWindows[0].label} open` : "No open window right now"}</span>
       </div>
-
-      <form
-        className="smart-add-bar"
-        onSubmit=${(event) => {
-          event.preventDefault();
-          onTabChange("ask");
-        }}
-      >
-        <input
-          value=${chatDraft}
-          onInput=${(event) => onChatDraftChange(event.target.value)}
-          placeholder="Tell Vireli what you need to do..."
-          aria-label="Tell VIRELI what you need to do"
-        />
-        <button type="submit" className="primary-button" disabled=${!chatDraft.trim()}>
-          Ask
-        </button>
-      </form>
 
       <div className="home-grid planner-dashboard-grid">
         <article className="feature-card next-task-card">
@@ -5068,6 +4980,22 @@ function HomeTab({
   `;
 }
 
+function EmptyPlannerPage({ pageTitle }) {
+  return html`
+    <${motion.section}
+      key=${pageTitle}
+      className="tab-view empty-planner-view"
+      aria-label=${pageTitle}
+      initial=${{ opacity: 0, y: 20 }}
+      animate=${{ opacity: 1, y: 0 }}
+      exit=${{ opacity: 0, y: -16 }}
+      transition=${{ duration: 0.35 }}
+    >
+      <div className="empty-page-shell" aria-hidden="true"></div>
+    </${motion.section}>
+  `;
+}
+
 function PlanTodayTab({
   todayLabel,
   timeMode,
@@ -5080,6 +5008,8 @@ function PlanTodayTab({
   onHomeworkDelete,
   onPlanNotificationDismiss,
 }) {
+  return html`<${EmptyPlannerPage} pageTitle="Assignments" />`;
+
   const today = getDateInputValue();
   const openHomeworkItems = homeworkItems.filter((item) => !item.completed);
   const completedHomeworkItems = homeworkItems.filter((item) => item.completed);
@@ -5361,6 +5291,95 @@ function ModeItemsTab({
     : mode === "School"
       ? "Personal responsibilities stay separate from school assignments."
       : "Add what you need to accomplish. VIRELI will fit it around your schedule.";
+
+  if (isMeeting) {
+    return html`<${EmptyPlannerPage} pageTitle="Meetings" />`;
+  }
+
+  return html`
+    <${motion.section}
+      key=${itemType.toLowerCase()}
+      className="tab-view"
+      initial=${{ opacity: 0, y: 20 }}
+      animate=${{ opacity: 1, y: 0 }}
+      exit=${{ opacity: 0, y: -16 }}
+      transition=${{ duration: 0.35 }}
+    >
+      <div className="tab-heading">
+        <div>
+          <p className="eyebrow">${mode} mode</p>
+          <h1 className="font-display">${pageTitle}</h1>
+          <p className="tab-heading-lead">${pageLead}</p>
+        </div>
+      </div>
+
+      <div className="daily-grid">
+        <article className="feature-card feature-card-support plan-builder-card task-builder-card">
+          <div className="card-topline card-topline-simple">
+            <span className="mood-chip">${editingCalendarTaskId ? "Edit" : "Task"}</span>
+          </div>
+          <h3 className="font-display section-title-lg">${editingCalendarTaskId ? "Edit task" : "Add task"}</h3>
+          <form className="calendar-add-form" onSubmit=${(event) => onModeItemSubmit("Task", event)}>
+            <label className="field-stack">
+              <span>What needs to be done?</span>
+              <input
+                className="planning-input"
+                value=${calendarTaskDraft.title}
+                onInput=${(event) => onCalendarTaskDraftChange("title", event.target.value)}
+                placeholder="Practice piano"
+              />
+            </label>
+            <div className="card-footer-row">
+              <span>VIRELI will choose a time using your saved schedule.</span>
+              <div className="calendar-form-actions">
+                ${editingCalendarTaskId
+                  ? html`<button type="button" className="secondary-button" onClick=${onCalendarTaskCancelEdit}>Cancel edit</button>`
+                  : null}
+                <button type="submit" className="primary-button" disabled=${!calendarTaskDraft.title.trim()}>
+                  ${editingCalendarTaskId ? "Save changes" : "Add task"}
+                </button>
+              </div>
+            </div>
+          </form>
+        </article>
+
+        <article className="feature-card feature-card-quote-wide">
+          <h3 className="font-display">${pageTitle}</h3>
+          ${visibleItems.length
+            ? html`
+                <div className="selected-day-list">
+                  ${visibleItems.map(
+                    (item) => html`
+                      <div key=${item.id} className=${cx("selected-day-item is-task", item.completed && "is-complete")}>
+                        <div>
+                          <strong>${item.title}</strong>
+                          <span>${[
+                            item.scheduledDate ? formatShortDate(item.scheduledDate) : "",
+                            item.scheduledTime ? formatTimeLabel(item.scheduledTime) : "Auto-scheduled",
+                            item.durationMinutes ? formatDurationFromMinutes(Number(item.durationMinutes)) : "",
+                          ].filter(Boolean).join(" · ")}</span>
+                        </div>
+                        <div className="calendar-detail-actions">
+                          <button type="button" className="secondary-button" onClick=${() => onCalendarTaskToggle(item.id)}>
+                            ${item.completed ? "Reopen" : "Done"}
+                          </button>
+                          <button type="button" className="secondary-button" onClick=${() => onCalendarTaskEdit(item.id)}>
+                            Edit
+                          </button>
+                          <button type="button" className="secondary-button" onClick=${() => onCalendarTaskDelete(item.id)}>
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    `,
+                  )}
+                </div>
+              `
+            : html`<p>No tasks yet.</p>`}
+        </article>
+      </div>
+    </${motion.section}>
+  `;
 
   return html`
     <${motion.section}
@@ -5676,9 +5695,6 @@ function CalendarTab({
         <div>
           <p className="eyebrow">Calendar</p>
           <h1 className="font-display">${getMonthLabel(monthAnchor)}</h1>
-          <p className="tab-heading-lead">
-            View the same schedule as a timeline, day, week, month, or agenda.
-          </p>
         </div>
         <div className="calendar-month-controls">
           ${["horizontal", "day", "week", "month", "agenda"].map(
@@ -5699,147 +5715,7 @@ function CalendarTab({
         </div>
       </div>
 
-      <div className="calendar-grid">
-
-
-        <article className="feature-card calendar-today-card">
-          <h3 className="font-display section-title-lg">Today</h3>
-          <div className="calendar-today-list">
-            <div><strong>${dueToday.length}</strong><span>due today</span></div>
-            <div><strong>${monthItems.length}</strong><span>this month</span></div>
-            <div><strong>${selectedDayItems.length}</strong><span>selected day</span></div>
-            <div><strong>${visibleCalendarItems.length}</strong><span>upcoming</span></div>
-          </div>
-        </article>
-
-        <article className="feature-card selected-day-card">
-          <p className="eyebrow">Selected day</p>
-          <h3 className="font-display section-title-lg">${formatShortDate(selectedDateValue)}</h3>
-          ${chronologicalDayItems.length
-            ? html`
-                <div className="selected-day-list">
-                  ${chronologicalDayItems.map(
-                    (item) => html`
-                      <div key=${item.id} className=${cx("selected-day-item", `is-${item.source}`)}>
-                        <div>
-                          <strong>${item.title}</strong>
-                          <span>${[item.sourceLabel, item.timeLabel, item.durationLabel, item.subject].filter(Boolean).join(" · ")}</span>
-                        </div>
-                        ${item.source === "plan" || item.source === "calendar"
-                          ? html`
-                              <div className="calendar-detail-actions">
-                                <button
-                                  type="button"
-                                  className="secondary-button"
-                                  onClick=${() => item.source === "plan" ? onHomeworkCompleteToggle(item.id) : onCalendarTaskToggle(item.id)}
-                                >
-                                  Complete
-                                </button>
-                                ${item.source === "calendar"
-                                  ? html`
-                                      <button
-                                        type="button"
-                                        className="secondary-button"
-                                        onClick=${() => onCalendarTaskEdit(item.id)}
-                                      >
-                                        Edit
-                                      </button>
-                                    `
-                                  : null}
-                                ${item.source === "plan"
-                                  ? html`
-                                      <button
-                                        type="button"
-                                        className="secondary-button"
-                                        onClick=${() => onHomeworkReschedule(item.id, selectedDateValue, "16:00")}
-                                      >
-                                        Reschedule
-                                      </button>
-                                    `
-                                  : null}
-                                <button
-                                  type="button"
-                                  className="secondary-button"
-                                  onClick=${() => item.source === "plan" ? onHomeworkDelete(item.id) : onCalendarTaskDelete(item.id)}
-                                >
-                                  Delete
-                                </button>
-                              </div>
-                            `
-                          : null}
-                      </div>
-                    `,
-                  )}
-                </div>
-              `
-            : html`<p>Your day is open.</p>`}
-        </article>
-
-        <article className="feature-card selected-day-card">
-          <p className="eyebrow">Tasks and events</p>
-          <h3 className="font-display section-title-lg">${selectedDayItems.length} saved</h3>
-          ${selectedDayItems.length
-            ? html`
-                <div className="selected-day-list">
-                  ${selectedDayItems.map(
-                    (item) => html`
-                      <div key=${item.calendarId} className=${cx("selected-day-item", `is-${item.source}`)}>
-                        <div>
-                          <strong>${item.title}</strong>
-                          <span>${[
-                            item.sourceLabel,
-                            item.subject,
-                            item.allDay ? "All day" : item.scheduledTime ? formatTimeLabel(item.scheduledTime) : "",
-                            getFrequencyLabel(item.frequency),
-                            item.priority && item.priority !== "Normal" ? item.priority : "",
-                          ].filter(Boolean).join(" · ")}</span>
-                        </div>
-                        <div className="calendar-detail-actions">
-                          <button
-                            type="button"
-                            className="secondary-button"
-                            onClick=${() => item.source === "homework" ? onHomeworkCompleteToggle(item.id) : onCalendarTaskToggle(item.id)}
-                          >
-                            Complete
-                          </button>
-                          ${item.source !== "homework"
-                            ? html`
-                                <button
-                                  type="button"
-                                  className="secondary-button"
-                                  onClick=${() => onCalendarTaskEdit(item.id)}
-                                >
-                                  Edit
-                                </button>
-                              `
-                            : null}
-                          ${item.source === "homework"
-                            ? html`
-                                <button
-                                  type="button"
-                                  className="secondary-button"
-                                  onClick=${() => onHomeworkReschedule(item.id, selectedDateValue, item.scheduledTime || "16:00")}
-                                >
-                                  Reschedule
-                                </button>
-                              `
-                            : null}
-                          <button
-                            type="button"
-                            className="secondary-button"
-                            onClick=${() => item.source === "homework" ? onHomeworkDelete(item.id) : onCalendarTaskDelete(item.id)}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                    `,
-                  )}
-                </div>
-              `
-            : html`<p>No saved plans for this day.</p>`}
-        </article>
-
+      <div className="calendar-grid calendar-view-only-grid">
         <article className="feature-card feature-card-quote-wide month-calendar-card">
           ${calendarView === "horizontal"
             ? html`
@@ -6119,68 +5995,6 @@ function AskVireliTab({
   `;
 }
 
-function ImproveTab({
-  feedbackDraft,
-  feedbackSubmitted,
-  onFeedbackChange,
-  onFeedbackAreaChange,
-  onFeedbackSubmit,
-}) {
-  return html`
-    <${motion.section}
-      key="improve"
-      className="tab-view"
-      initial=${{ opacity: 0, y: 20 }}
-      animate=${{ opacity: 1, y: 0 }}
-      exit=${{ opacity: 0, y: -16 }}
-      transition=${{ duration: 0.35 }}
-    >
-      <div className="tab-heading">
-        <div>
-          <p className="eyebrow">How can we improve</p>
-          <h1 className="font-display">Tell us how to make this better.</h1>
-        </div>
-      </div>
-
-      <article className="feature-card improve-card">
-        <div className="card-topline">
-          <span className="eyebrow">Feedback space</span>
-        </div>
-        <h3 className="font-display">How can we improve VIRELI?</h3>
-        <p>Report bugs, confusing behavior, feature ideas, or anything you want VIRELI to do better.</p>
-
-        ${feedbackSubmitted
-          ? html`
-              <div className="status-banner status-banner-soft">
-                Thanks for helping shape VIRELI.
-              </div>
-            `
-          : null}
-
-        <textarea
-          className="feedback-input"
-          value=${feedbackDraft.text}
-          onInput=${(event) => onFeedbackChange(event.target.value)}
-          placeholder="What should be improved?"
-          rows="8"
-        ></textarea>
-
-        <div className="card-footer-row">
-          <span>Friendly suggestions, big or small, are welcome.</span>
-          <button
-            type="button"
-            className="primary-button"
-            onClick=${onFeedbackSubmit}
-            disabled=${!feedbackDraft.text.trim()}
-          >
-            Submit
-          </button>
-        </div>
-      </article>
-    </${motion.section}>
-  `;
-}
-
 function SettingsTab({
   savedClasses,
   classDraft,
@@ -6206,6 +6020,7 @@ function SettingsTab({
   onSaveRoutine,
   onSchedulingPreferenceChange,
   onTabChange,
+  onMoodSelect,
 }) {
   const [activeSettingsSection, setActiveSettingsSection] = useState("");
   const accountSummary = profile.connected
@@ -6514,8 +6329,6 @@ function DashboardShell({
   moodSelection,
   moodInfo,
   moodNote,
-  feedbackDraft,
-  feedbackSubmitted,
   chatDraft,
   messages,
   recentAskHistory,
@@ -6542,6 +6355,7 @@ function DashboardShell({
   routineDraft,
   passwordDraft,
   onTabChange,
+  onMoodSelect,
   onHomeworkDraftChange,
   onHomeworkSubmit,
   onHomeworkCompleteToggle,
@@ -6578,9 +6392,6 @@ function DashboardShell({
   onChatDraftChange,
   onChatSubmit,
   onChatRetry,
-  onFeedbackChange,
-  onFeedbackAreaChange,
-  onFeedbackSubmit,
   onThoughtDraftChange,
   onThoughtAdd,
   onThoughtUpdate,
@@ -6594,10 +6405,11 @@ function DashboardShell({
   onCalendarPreferenceChange,
   onSchedulingPreferenceChange,
 }) {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   let activeView = null;
   const primaryUse = profile.primaryUse || profileDraft.primaryUse || "School";
   const primaryNavItems = getPrimaryNavItems(primaryUse);
-  const mobileNavItems = getMobileNavItems(primaryUse);
   const topSchedule = getTodayScheduleBlocks({ routine, homeworkItems, calendarTasks });
   const pageLabel = NAV_ITEMS.find((item) => item.id === activeTab)?.label || "Home";
   const askPromptChips = getAskPromptChips({ routine, homeworkItems, calendarTasks, mood: moodSelection, primaryUse });
@@ -6612,9 +6424,7 @@ function DashboardShell({
         consistencyEvents=${consistencyEvents}
         savedClasses=${savedClasses}
         moodSelection=${moodSelection}
-        chatDraft=${chatDraft}
         onTabChange=${onTabChange}
-        onChatDraftChange=${onChatDraftChange}
         onHomeworkCompleteToggle=${onHomeworkCompleteToggle}
         onHomeworkReschedule=${onHomeworkReschedule}
         onHomeworkDelete=${onHomeworkDelete}
@@ -6726,14 +6536,11 @@ function DashboardShell({
         onChatRetry=${onChatRetry}
       />
     `;
-  } else if (activeTab === "improve") {
+  } else if (activeTab === "check-in") {
     activeView = html`
-      <${ImproveTab}
-        feedbackDraft=${feedbackDraft}
-        feedbackSubmitted=${feedbackSubmitted}
-        onFeedbackChange=${onFeedbackChange}
-        onFeedbackAreaChange=${onFeedbackAreaChange}
-        onFeedbackSubmit=${onFeedbackSubmit}
+      <${CheckInTab}
+        moodSelection=${moodSelection}
+        onMoodSelect=${onMoodSelect}
       />
     `;
   } else {
@@ -6778,32 +6585,44 @@ function DashboardShell({
       <${CircleBackdrop} />
 
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-[1480px] flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
-        <header className="surface-panel topbar">
-          <div className="topbar-brand-mark" aria-label="VIRELI">
+        <header className="surface-panel topbar app-topbar">
+          <button
+            type="button"
+            className="sidebar-toggle-button js-sidebar-menu-button"
+            aria-label="Open navigation"
+            aria-expanded=${sidebarOpen}
+            onClick=${() => setSidebarOpen(true)}
+          >
+            Menu
+          </button>
+          <div className="topbar-brand-mark topbar-centered-logo" aria-label="VIRELI">
             <${VireliLogoMark} className="brand-mark" />
           </div>
-          <nav className="topbar-nav" aria-label="Primary navigation">
-            ${primaryNavItems.map(
-              (item) => html`
-                <button
-                  key=${item.id}
-                  type="button"
-                  className=${cx("topbar-nav-button", activeTab === item.id && "is-active")}
-                  onClick=${() => onTabChange(item.id)}
-                >
-                  ${item.label}
-                </button>
-              `,
-            )}
-          </nav>
           <h1 className="topbar-page-name font-display">${pageLabel}</h1>
         </header>
 
-        <div className="dashboard-layout">
-          <aside className="surface-panel sidebar-panel">
+        ${sidebarOpen
+          ? html`<button type="button" className="sidebar-scrim" aria-label="Close navigation" onClick=${() => setSidebarOpen(false)}></button>`
+          : null}
+
+        <div className=${cx("dashboard-layout has-sidebar", sidebarCollapsed && "is-sidebar-collapsed")}>
+          <aside className=${cx("surface-panel sidebar-panel app-sidebar", sidebarOpen && "is-open", sidebarCollapsed && "is-collapsed")}>
             <div className="sidebar-head">
-              <p className="eyebrow">Navigation</p>
-              <h2 className="font-display">Navigate through VIRELI</h2>
+              <div>
+                <p className="eyebrow">Navigation</p>
+                <h2 className="font-display">Navigate through VIRELI</h2>
+              </div>
+              <div className="sidebar-head-actions">
+                <button type="button" className="sidebar-icon-button is-mobile-only" aria-label="Close navigation" onClick=${() => setSidebarOpen(false)}>Close</button>
+                <button
+                  type="button"
+                  className="sidebar-icon-button is-desktop-only"
+                  aria-label=${sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
+                  onClick=${() => setSidebarCollapsed((currentValue) => !currentValue)}
+                >
+                  ${sidebarCollapsed ? "Expand" : "Collapse"}
+                </button>
+              </div>
             </div>
 
             <nav className="sidebar-nav" aria-label="Primary">
@@ -6813,21 +6632,16 @@ function DashboardShell({
                     key=${item.id}
                     type="button"
                     className=${cx("nav-button", activeTab === item.id && "is-active")}
-                    onClick=${() => onTabChange(item.id)}
+                    onClick=${() => {
+                      onTabChange(item.id);
+                      setSidebarOpen(false);
+                    }}
                   >
-                    ${item.label}
+                    <span className="nav-label">${item.label}</span>
                   </button>
                 `,
               )}
             </nav>
-            <div className="sidebar-secondary-links">
-              <button type="button" className="secondary-button" onClick=${() => onTabChange("improve")}>
-                Improve
-              </button>
-              <button type="button" className="secondary-button" onClick=${() => onTabChange("settings")}>
-                Settings
-              </button>
-            </div>
           </aside>
 
           <main className="surface-panel content-panel">
@@ -6835,20 +6649,6 @@ function DashboardShell({
           </main>
         </div>
 
-        <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
-          ${mobileNavItems.map(
-            (item) => html`
-              <button
-                key=${item.id}
-                type="button"
-                className=${cx("mobile-nav-button", (item.id === activeTab || (item.id === "more" && ["routine", "settings", "improve"].includes(activeTab))) && "is-active")}
-                onClick=${() => onTabChange(item.id === "more" ? "settings" : item.id)}
-              >
-                ${item.label}
-              </button>
-            `,
-          )}
-        </nav>
       </div>
     </${motion.section}>
   `;
@@ -6870,8 +6670,6 @@ function App() {
     return Boolean(savedProfile.setupComplete);
   });
   const [activeTab, setActiveTab] = useState("home");
-  const [feedbackDraft, setFeedbackDraft] = useState(EMPTY_FEEDBACK_DRAFT);
-  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   const [chatDraft, setChatDraft] = useState("");
   const [responseType, setResponseType] = useState("conversation");
   const [pendingScheduleSuggestion, setPendingScheduleSuggestion] = useState(null);
@@ -6938,7 +6736,7 @@ function App() {
   const themeName = getMoodTheme(moodSelection);
   const recentAskHistory = useMemo(() => getRecentAskHistory(askHistory), [askHistory]);
   const archivedAskHistory = useMemo(() => getArchivedAskHistory(askHistory), [askHistory]);
-  const currentSetupStep = Math.max(1, Math.min(4, Number(launchSetupStep || 1)));
+  const currentSetupStep = Math.max(1, Math.min(3, Number(launchSetupStep || 1)));
   const dashboardReady = profileStepComplete && launchSetupComplete;
 
   function persistAskConversation(nextMessages = messages) {
@@ -7064,7 +6862,7 @@ function App() {
 
   useEffect(() => {
     const visibleIds = getPrimaryNavItems(profile.primaryUse || "School").map((item) => item.id);
-    if (!visibleIds.includes(activeTab) && !["settings", "improve"].includes(activeTab)) {
+    if (!visibleIds.includes(activeTab) && activeTab !== "settings") {
       setActiveTab("home");
     }
   }, [activeTab, profile.primaryUse]);
@@ -7132,23 +6930,28 @@ function App() {
     setMoodSelection(choice);
     askSessionIdRef.current = makeId("ask-session");
     setMessages(buildInitialMessages(choice));
-    window.setTimeout(() => {
-      setMoodCheckInComplete(true);
-      advanceSetupStep(3, {
+    setMoodCheckInComplete(true);
+    setProfile((currentProfile) => {
+      const nextProfile = {
+        ...currentProfile,
         moodSelection: choice,
         moodNote: "",
-      });
-    }, 900);
+        updatedAt: new Date().toISOString(),
+      };
+      setProfileDraft(nextProfile);
+      return nextProfile;
+    });
   }
 
   function advanceSetupStep(nextStep, changes = {}) {
     const now = new Date().toISOString();
-    setLaunchSetupStep(Math.max(1, Math.min(4, Number(nextStep || 1))));
+    const normalizedStep = Math.max(1, Math.min(3, Number(nextStep || 1)));
+    setLaunchSetupStep(normalizedStep);
     setProfile((currentProfile) => {
       const nextProfile = {
         ...currentProfile,
         ...changes,
-        setupStep: nextStep,
+        setupStep: normalizedStep,
         timezone: currentProfile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
         updatedAt: now,
       };
@@ -7165,72 +6968,47 @@ function App() {
 
   function handleMoodContinue() {
     setMoodCheckInComplete(true);
-    advanceSetupStep(3, {
-      moodSelection: moodSelection || "skipped",
-      moodNote: "",
-    });
+    handleMoodSelect(moodSelection || "skipped");
   }
 
   function handleMoodSkip() {
     setMoodSelection("");
     setMoodNote("");
     setMoodCheckInComplete(true);
-    advanceSetupStep(3, {
+    setProfile((currentProfile) => ({
+      ...currentProfile,
       moodSelection: "skipped",
       moodNote: "",
-    });
+      updatedAt: new Date().toISOString(),
+    }));
   }
 
   function handleSetupModeContinue(modeDraft = profileDraft) {
     const updates = {
       primaryUse: modeDraft.primaryUse,
-      schoolStartTime: modeDraft.primaryUse === "School" ? modeDraft.schoolStartTime : "",
-      schoolEndTime: modeDraft.primaryUse === "School" ? modeDraft.schoolEndTime : "",
     };
 
-    if (modeDraft.primaryUse === "School" && modeDraft.schoolStartTime && modeDraft.schoolEndTime) {
-      const startMinutes = timeToMinutes(modeDraft.schoolStartTime);
-      const endMinutes = timeToMinutes(modeDraft.schoolEndTime);
-      const durationMinutes = startMinutes !== null && endMinutes !== null
-        ? Math.max(30, endMinutes > startMinutes ? endMinutes - startMinutes : endMinutes + 24 * 60 - startMinutes)
-        : "";
-      const existingActivities = Array.isArray(routineDraft.dailyActivities) ? routineDraft.dailyActivities : [];
-      const schoolBlock = {
-        id: "routine-school-hours",
-        name: "School",
-        durationMinutes: String(durationMinutes || ""),
-        usualTime: modeDraft.schoolStartTime,
-        days: "Weekdays",
-        fixed: true,
-        flexible: false,
-        activityType: "School",
-        active: true,
-      };
-      setRoutineDraft((currentRoutine) => ({
-        ...currentRoutine,
-        dailyActivities: [
-          schoolBlock,
-          ...existingActivities.filter((activity) => activity.id !== "routine-school-hours" && String(activity.name || "").toLowerCase() !== "school"),
-        ].slice(0, 8),
-      }));
-    }
-
-    advanceSetupStep(4, updates);
+    advanceSetupStep(3, updates);
   }
 
   function handleScheduleBasicsContinue() {
-    const nextRoutine = saveRoutine(routineDraft);
+    const nextRoutine = saveRoutine({
+      ...routineDraft,
+      preferredDailyWorkloadMinutes: routineDraft.preferredDailyWorkloadMinutes || String(DEFAULT_DAILY_WORKLOAD_MINUTES),
+      preferredWorkIntervalMinutes: "",
+      preferredWorkIntervalLabel: "",
+    });
     setRoutine(nextRoutine);
     setRoutineDraft(nextRoutine);
     setRoutineStepComplete(true);
     setLaunchSetupComplete(true);
-    setLaunchSetupStep(4);
+    setLaunchSetupStep(3);
     setActiveTab("home");
     setProfile((currentProfile) => {
       const nextProfile = {
         ...currentProfile,
         setupComplete: true,
-        setupStep: 4,
+        setupStep: 3,
         routineSetupSkipped: false,
         updatedAt: new Date().toISOString(),
       };
@@ -7402,7 +7180,7 @@ function App() {
       routineSetupSkipped: profile.routineSetupSkipped,
       primaryUse: profile.primaryUse,
       setupComplete: Boolean(profile.setupComplete),
-      setupStep: profile.setupComplete ? 4 : Math.max(1, Math.min(4, Number(profile.setupStep || 1))),
+      setupStep: profile.setupComplete ? 3 : Math.max(1, Math.min(3, Number(profile.setupStep || 1))),
       timezone: profile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
       schedulingPreferences: {
         ...EMPTY_PROFILE.schedulingPreferences,
@@ -7444,7 +7222,7 @@ function App() {
       routineSetupSkipped: profile.routineSetupSkipped,
       primaryUse: profile.primaryUse,
       setupComplete: Boolean(profile.setupComplete),
-      setupStep: profile.setupComplete ? 4 : Math.max(1, Math.min(4, Number(profile.setupStep || 1))),
+      setupStep: profile.setupComplete ? 3 : Math.max(1, Math.min(3, Number(profile.setupStep || 1))),
       timezone: profile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
       schedulingPreferences: {
         ...EMPTY_PROFILE.schedulingPreferences,
@@ -7536,7 +7314,7 @@ function App() {
       routineSetupSkipped: profile.routineSetupSkipped,
       primaryUse: profile.primaryUse,
       setupComplete: Boolean(profile.setupComplete),
-      setupStep: profile.setupComplete ? 4 : Math.max(1, Math.min(4, Number(profile.setupStep || 1))),
+      setupStep: profile.setupComplete ? 3 : Math.max(1, Math.min(3, Number(profile.setupStep || 1))),
       timezone: profile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
       schedulingPreferences: {
         ...EMPTY_PROFILE.schedulingPreferences,
@@ -7799,7 +7577,7 @@ function App() {
       routineSetupSkipped: profile.routineSetupSkipped,
       primaryUse: profile.primaryUse,
       setupComplete: Boolean(profile.setupComplete),
-      setupStep: profile.setupComplete ? 4 : Math.max(1, Math.min(4, Number(profile.setupStep || 1))),
+      setupStep: profile.setupComplete ? 3 : Math.max(1, Math.min(3, Number(profile.setupStep || 1))),
       timezone: profile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
       schedulingPreferences: {
         ...EMPTY_PROFILE.schedulingPreferences,
@@ -7925,13 +7703,13 @@ function App() {
     setRoutineDraft(nextRoutine);
     setRoutineStepComplete(true);
     setLaunchSetupComplete(true);
-    setLaunchSetupStep(4);
+    setLaunchSetupStep(3);
     setActiveTab("home");
     setProfile((currentProfile) => ({
       ...currentProfile,
       routineSetupSkipped: false,
       setupComplete: true,
-      setupStep: 4,
+      setupStep: 3,
       updatedAt: new Date().toISOString(),
     }));
   }
@@ -8029,6 +7807,7 @@ function App() {
     const bestWindow = findBestFreeWindow(
       scheduleDate === today ? getRemainingSchedule(draftSchedule) : draftSchedule,
       Math.min(estimatedMinutes, 90),
+      routine,
     );
     const scheduledDate = homeworkDraft.scheduledDate || scheduleDate;
     const scheduledTime = homeworkDraft.scheduledTime || (bestWindow ? minutesToTimeValue(bestWindow.startMinutes) : "");
@@ -8281,6 +8060,17 @@ function App() {
     const title = calendarTaskDraft.title.trim();
     const startMinutes = timeToMinutes(calendarTaskDraft.scheduledTime);
     const endMinutes = timeToMinutes(calendarTaskDraft.endTime);
+    const today = getDateInputValue();
+    const autoDuration = Number(calendarTaskDraft.durationMinutes) || DEFAULT_TASK_DURATION_MINUTES;
+    const taskSchedule = getTodayScheduleBlocks({
+      routine,
+      homeworkItems,
+      calendarTasks,
+      dateValue: today,
+    });
+    const autoWindow = itemType === "Task"
+      ? findBestFreeWindow(getRemainingSchedule(taskSchedule), autoDuration, routine)
+      : null;
 
     if (!title) {
       return;
@@ -8295,13 +8085,16 @@ function App() {
       ...calendarTaskDraft,
       id: editingCalendarTaskId || calendarTaskDraft.id || makeId(itemType === "Meeting" ? "meeting" : "task"),
       title,
-      scheduledDate: calendarTaskDraft.scheduledDate || selectedCalendarDate || getDateInputValue(),
+      scheduledDate: calendarTaskDraft.scheduledDate || (itemType === "Task" ? today : selectedCalendarDate || today),
+      scheduledTime: calendarTaskDraft.scheduledTime || (itemType === "Task" && autoWindow ? minutesToTimeValue(autoWindow.startMinutes) : ""),
       itemType,
       type: itemType,
       durationMinutes:
         itemType === "Meeting" && startMinutes !== null && endMinutes !== null
           ? String(endMinutes - startMinutes)
-          : calendarTaskDraft.durationMinutes,
+          : String(autoDuration),
+      priority: itemType === "Task" ? "Normal" : calendarTaskDraft.priority,
+      frequency: itemType === "Task" ? "One time" : calendarTaskDraft.frequency,
       fixed: itemType === "Meeting" ? true : Boolean(calendarTaskDraft.fixed),
       flexible: itemType === "Meeting" ? false : calendarTaskDraft.fixed ? false : calendarTaskDraft.flexible !== false,
       repeat: calendarTaskDraft.repeat || calendarTaskDraft.frequency !== "Never",
@@ -8983,30 +8776,6 @@ function App() {
     setMessages(entry.messages.length ? entry.messages : buildInitialMessages(moodSelection || "ok"));
   }
 
-  function handleFeedbackSubmit() {
-    if (!feedbackDraft.text.trim()) {
-      return;
-    }
-
-    const feedbackArea = feedbackDraft.area || "General suggestions";
-
-    writePersistentArray(FEEDBACK_STORAGE_KEY, [
-      {
-        id: makeId("feedback"),
-        area: feedbackArea,
-        text: feedbackDraft.text.trim(),
-        quickFeedbackCategory: FEEDBACK_QUICK_OPTIONS.includes(feedbackDraft.text.trim()) ? feedbackDraft.text.trim() : "",
-        page: activeTab,
-        appVersion: APP_VERSION,
-        feature: feedbackArea,
-        createdAt: new Date().toISOString(),
-      },
-      ...loadFeedbackEntries(),
-    ]);
-    setFeedbackSubmitted(true);
-    setFeedbackDraft(EMPTY_FEEDBACK_DRAFT);
-  }
-
   function handleThoughtAdd(event) {
     event?.preventDefault?.();
     const text = thoughtDraft.trim();
@@ -9183,14 +8952,6 @@ function App() {
               `
           : !launchSetupComplete && currentSetupStep === 2
             ? html`
-                <${MoodCheckInScreen}
-                  key="mood"
-                  moodSelection=${moodSelection}
-                  onMoodSelect=${handleMoodSelect}
-                />
-              `
-          : !launchSetupComplete && currentSetupStep === 3
-            ? html`
                 <${SetupModeScreen}
                   key="setup-mode"
                   profileDraft=${profileDraft}
@@ -9198,7 +8959,7 @@ function App() {
                   onContinue=${handleSetupModeContinue}
                 />
               `
-          : !launchSetupComplete && currentSetupStep === 4
+          : !launchSetupComplete && currentSetupStep === 3
             ? html`
                 <${SetupScheduleBasicsScreen}
                   key="setup-schedule"
@@ -9216,8 +8977,6 @@ function App() {
                   moodSelection=${moodSelection}
                   moodInfo=${moodInfo}
                   moodNote=${moodNote}
-                  feedbackDraft=${feedbackDraft}
-                  feedbackSubmitted=${feedbackSubmitted}
                   chatDraft=${chatDraft}
                   messages=${messages}
                   recentAskHistory=${recentAskHistory}
@@ -9244,6 +9003,7 @@ function App() {
                   routineDraft=${routineDraft}
                   passwordDraft=${passwordDraft}
                   onTabChange=${setActiveTab}
+                  onMoodSelect=${handleMoodSelect}
                   onHomeworkDraftChange=${handleHomeworkDraftChange}
                   onHomeworkSubmit=${handleHomeworkSubmit}
                   onHomeworkCompleteToggle=${handleHomeworkCompleteToggle}
@@ -9280,21 +9040,6 @@ function App() {
                   onChatDraftChange=${setChatDraft}
                   onChatSubmit=${handleChatSubmit}
                   onChatRetry=${handleChatRetry}
-                  onFeedbackChange=${(value) => {
-                    setFeedbackDraft((currentDraft) => ({
-                      ...currentDraft,
-                      text: value,
-                    }));
-                    setFeedbackSubmitted(false);
-                  }}
-                  onFeedbackAreaChange=${(value) => {
-                    setFeedbackDraft((currentDraft) => ({
-                      ...currentDraft,
-                      area: value,
-                    }));
-                    setFeedbackSubmitted(false);
-                  }}
-                  onFeedbackSubmit=${handleFeedbackSubmit}
                   onThoughtDraftChange=${setThoughtDraft}
                   onThoughtAdd=${handleThoughtAdd}
                   onThoughtUpdate=${handleThoughtUpdate}
