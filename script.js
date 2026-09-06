@@ -4,57 +4,16 @@ const html = htm.bind(React.createElement);
 
 const NAV_ITEMS = [
   { id: "home", label: "Home" },
-  { id: "assignments", label: "Assignments" },
   { id: "tasks", label: "Tasks" },
-  { id: "meetings", label: "Meetings" },
-  { id: "check-in", label: "Check In" },
-  { id: "routine", label: "Your Routine" },
   { id: "ask", label: "Ask VIRELI" },
   { id: "calendar", label: "Calendar" },
+  { id: "routine", label: "Your Routine" },
+  { id: "improve", label: "How We Can Improve" },
   { id: "settings", label: "Settings" },
 ];
 
-function getPrimaryNavItems(primaryUse = "School") {
-  const visibleIds =
-    primaryUse === "Work"
-      ? ["home", "tasks", "meetings", "check-in", "ask", "calendar", "routine", "settings"]
-      : primaryUse === "Other"
-        ? ["home", "tasks", "check-in", "ask", "calendar", "routine", "settings"]
-        : ["home", "assignments", "tasks", "check-in", "ask", "calendar", "routine", "settings"];
-  return visibleIds
-    .map((id) => NAV_ITEMS.find((item) => item.id === id))
-    .filter(Boolean);
-}
-
-function getMobileNavItems(primaryUse = "School") {
-  return primaryUse === "Work"
-    ? [
-        { id: "home", label: "Home" },
-        { id: "tasks", label: "Tasks" },
-        { id: "meetings", label: "Meetings" },
-        { id: "check-in", label: "Check In" },
-        { id: "ask", label: "Ask" },
-        { id: "calendar", label: "Calendar" },
-        { id: "settings", label: "Settings" },
-      ]
-    : primaryUse === "Other"
-      ? [
-          { id: "home", label: "Home" },
-          { id: "tasks", label: "Tasks" },
-          { id: "check-in", label: "Check In" },
-          { id: "ask", label: "Ask" },
-          { id: "calendar", label: "Calendar" },
-          { id: "settings", label: "Settings" },
-        ]
-    : [
-        { id: "home", label: "Home" },
-        { id: "assignments", label: "Assignments" },
-        { id: "tasks", label: "Tasks" },
-        { id: "check-in", label: "Check In" },
-        { id: "ask", label: "Ask" },
-        { id: "calendar", label: "Calendar" },
-        { id: "settings", label: "Settings" },
-      ];
+function getPrimaryNavItems() {
+  return NAV_ITEMS;
 }
 
 const CLASS_STORAGE_KEY = "vireli.savedClasses.v1";
@@ -62,12 +21,14 @@ const HOMEWORK_STORAGE_KEY = "vireli.homework.v1";
 const PROFILE_STORAGE_KEY = "vireli.profile.v1";
 const SCENARIO_AGENT_STORAGE_KEY = "vireli.scenarioAgent.v1";
 const ASK_HISTORY_STORAGE_KEY = "vireli.askHistory.v1";
+const FEEDBACK_STORAGE_KEY = "vireli.feedback.v1";
 const RECOMMENDATION_STORAGE_KEY = "vireli.recommendations.v1";
 const CALENDAR_TASK_STORAGE_KEY = "vireli.calendarTasks.v1";
 const CALENDAR_PREFERENCES_STORAGE_KEY = "vireli.calendarPreferences.v1";
 const ROUTINE_STORAGE_KEY = "vireli.routine.v1";
 const THOUGHT_STORAGE_KEY = "vireli.thoughts.v1";
 const CONSISTENCY_STORAGE_KEY = "vireli.consistency.v1";
+const SIDEBAR_STORAGE_KEY = "vireli.sidebarState.v1";
 const EMAIL_AUTH_CODE_LENGTH = 6;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -196,17 +157,27 @@ const EMPTY_CALENDAR_PREFERENCES = {
   noGuiltLanguage: true,
 };
 
+const EMPTY_FEEDBACK_DRAFT = {
+  area: "",
+  text: "",
+};
+
+const EMPTY_SIDEBAR_STATE = {
+  open: true,
+  collapsed: false,
+};
+
 function getBlankSetupRoutineDraft(baseRoutine = EMPTY_ROUTINE_DRAFT) {
   return {
     ...baseRoutine,
-    preferredDailyWorkloadMinutes: String(DEFAULT_DAILY_WORKLOAD_MINUTES),
+    preferredDailyWorkloadMinutes: baseRoutine.preferredDailyWorkloadMinutes || "",
     preferredWorkIntervalMinutes: "",
     preferredWorkloadLabel: "",
     preferredWorkIntervalLabel: "",
   };
 }
 
-const APP_VERSION = "day20-sidebar-simplification-20260904";
+const APP_VERSION = "day21-unified-tasks-calendar-routine-20260905";
 const INTRO_ANIMATION_SECONDS = 1.35;
 const INTRO_SCREEN_DURATION_MS = 3200;
 const THEME_TRANSITION_DURATION_MS = 2000;
@@ -252,7 +223,8 @@ const PRIMARY_USE_DESCRIPTIONS = {
   Other: "VIRELI will focus on general personal organization, flexible tasks, routines, and the things you want to keep track of.",
 };
 const ROUTINE_DAY_OPTIONS = ["Every day", "Weekdays", "Weekends", "Custom"];
-const SETUP_STEPS = ["Your Name", "VIRELI Mode", "Schedule"];
+const SETUP_STEPS = ["Your Name", "Schedule"];
+const FEEDBACK_AREAS = ["General", "Bug", "Confusing", "Feature idea", "Design"];
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const REMINDER_TIMING_OPTIONS = [
   "At planned time",
@@ -485,6 +457,14 @@ function writePersistentObject(storageKey, value) {
   }
 
   window.localStorage.setItem(storageKey, JSON.stringify(value));
+}
+
+function loadSidebarState() {
+  const sidebarState = readPersistentObject(SIDEBAR_STORAGE_KEY, EMPTY_SIDEBAR_STATE);
+  return {
+    open: sidebarState.open !== false,
+    collapsed: Boolean(sidebarState.collapsed),
+  };
 }
 
 function normalizeClassName(name) {
@@ -756,7 +736,7 @@ function saveRoutine(routineDraft) {
 
 function normalizeCalendarTask(task = {}) {
   const itemType = task.itemType || task.type || "Task";
-  const normalizedType = itemType === "Meeting" ? "Meeting" : itemType === "Event" ? "Event" : "Task";
+  const normalizedType = itemType === "Event" ? "Event" : "Task";
   return {
     ...EMPTY_CALENDAR_TASK_DRAFT,
     ...task,
@@ -764,8 +744,8 @@ function normalizeCalendarTask(task = {}) {
     title: task.title || "Untitled task",
     itemType: normalizedType,
     type: normalizedType,
-    fixed: normalizedType === "Meeting" ? true : Boolean(task.fixed),
-    flexible: normalizedType === "Meeting" ? false : task.fixed ? false : task.flexible !== false,
+    fixed: Boolean(task.fixed),
+    flexible: task.fixed ? false : task.flexible !== false,
     frequency: task.frequency && task.frequency !== "One time" ? task.frequency : "Never",
     allDay: Boolean(task.allDay),
     repeat: Boolean(task.repeat || (task.frequency && task.frequency !== "Never" && task.frequency !== "One time")),
@@ -781,6 +761,44 @@ function loadCalendarTasks() {
     .map(normalizeCalendarTask)
     .filter((task) => task.title)
     .slice(0, 60);
+}
+
+function homeworkItemToTask(item = {}) {
+  return normalizeCalendarTask({
+    id: item.sourceTaskId || `homework-task-${item.id || makeId("homework")}`,
+    sourceHomeworkId: item.id || "",
+    title: item.title || item.topic || "Untitled task",
+    subject: item.classLabel || item.subject || "",
+    itemType: "Task",
+    type: "Task",
+    scheduledDate: item.scheduledDate || item.dueDate || "",
+    scheduledTime: item.scheduledTime || "",
+    dueDate: item.dueDate || "",
+    durationMinutes: item.estimatedMinutes || DEFAULT_TASK_DURATION_MINUTES,
+    notes: item.notes || item.details || "",
+    completed: Boolean(item.completed),
+    createdAt: item.createdAt || new Date().toISOString(),
+    updatedAt: item.updatedAt || item.createdAt || new Date().toISOString(),
+  });
+}
+
+function loadUnifiedCalendarTasks() {
+  const savedTasks = loadCalendarTasks().map((task) =>
+    task.itemType === "Meeting" ? normalizeCalendarTask({ ...task, itemType: "Task", type: "Task", fixed: true }) : task,
+  );
+  const existingKeys = new Set(savedTasks.map((task) => task.sourceHomeworkId || `${task.title.toLowerCase()}|${task.scheduledDate || task.dueDate || ""}`));
+  const migratedHomeworkTasks = loadSavedHomework()
+    .map(homeworkItemToTask)
+    .filter((task) => {
+      const key = task.sourceHomeworkId || `${task.title.toLowerCase()}|${task.scheduledDate || task.dueDate || ""}`;
+      if (existingKeys.has(key)) {
+        return false;
+      }
+      existingKeys.add(key);
+      return true;
+    });
+
+  return [...savedTasks, ...migratedHomeworkTasks].slice(0, 80);
 }
 
 function loadCalendarPreferences() {
@@ -836,6 +854,10 @@ function getRecentAskHistory(entries) {
 
 function getArchivedAskHistory(entries) {
   return entries.filter((entry) => !isRecentChat(entry));
+}
+
+function loadFeedbackEntries() {
+  return readPersistentArray(FEEDBACK_STORAGE_KEY).slice(0, 40);
 }
 
 function getClassLabel(classes, classId, fallback = "Class") {
@@ -1562,7 +1584,7 @@ function getScheduleSourceLabel(source, item = {}) {
     return item.fixed === false ? "Flexible routine" : "Fixed busy time";
   }
   if (source === "plan" || source === "homework") {
-    return "Assignment";
+    return "Task";
   }
   if (source === "task") {
     return item.itemType === "Meeting" ? "Meeting" : item.itemType === "Event" ? "Event" : "Task";
@@ -1573,7 +1595,7 @@ function getScheduleSourceLabel(source, item = {}) {
   return "Schedule item";
 }
 
-function getAskPromptChips({ routine = EMPTY_ROUTINE_DRAFT, homeworkItems = [], calendarTasks = [], mood = "", primaryUse = "School" }) {
+function getAskPromptChips({ routine = EMPTY_ROUTINE_DRAFT, homeworkItems = [], calendarTasks = [], mood = "" }) {
   const recommendation = getNextAssignmentRecommendation({ routine, homeworkItems, calendarTasks, mood });
   const freeWindow = recommendation.freeWindows[0];
   const openAssignment = homeworkItems.find((item) => !item.completed);
@@ -1582,14 +1604,10 @@ function getAskPromptChips({ routine = EMPTY_ROUTINE_DRAFT, homeworkItems = [], 
     .sort((a, b) => `${a.scheduledDate || a.dueDate || "9999-12-31"} ${a.scheduledTime || ""}`.localeCompare(`${b.scheduledDate || b.dueDate || "9999-12-31"} ${b.scheduledTime || ""}`))[0];
   const chips = ["What should I do next?"];
 
-  if (primaryUse === "Work") {
-    chips.push("Schedule a team meeting Friday at 2");
-  } else if (primaryUse === "Other") {
-    chips.push("Add a workout tomorrow at 5");
-  } else if (openAssignment?.title) {
+  if (openAssignment?.title) {
     chips.push(`Plan ${openAssignment.title}`);
   } else {
-    chips.push("Add my science project due Friday");
+    chips.push("Add a task for tomorrow");
   }
   if (freeWindow) {
     chips.push(`What fits in ${freeWindow.durationLabel}?`);
@@ -3790,10 +3808,15 @@ function SetupAboutScreen({
   onProfileDraftChange,
   onContinue,
 }) {
-  const aboutName = profileDraft.name || "";
+  const [aboutName, setAboutName] = useState(profileDraft.name || "");
   const canContinue = Boolean(aboutName.trim());
 
+  useEffect(() => {
+    setAboutName(profileDraft.name || "");
+  }, [profileDraft.name]);
+
   function updateName(value) {
+    setAboutName(value);
     onProfileDraftChange("name", value);
   }
 
@@ -3815,7 +3838,7 @@ function SetupAboutScreen({
           transition=${{ duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
         >
           <div className="mood-heading mood-heading-centered">
-            <p className="eyebrow">Setup 1 of 3 · Your Name</p>
+            <p className="eyebrow">Setup 1 of 2 · Your Name</p>
             <h2 className="font-display">Your Name</h2>
           </div>
 
@@ -3832,7 +3855,7 @@ function SetupAboutScreen({
             </label>
             <div className="mood-control-row mood-control-row-centered">
               <button type="button" className="primary-button" onClick=${() => onContinue({ name: aboutName })} disabled=${!canContinue}>
-                Continue
+                Continue to Schedule
               </button>
             </div>
           </div>
@@ -3993,10 +4016,7 @@ function SetupScheduleBasicsScreen({
   onRoutineChange,
   onContinue,
 }) {
-  const canContinue = Boolean(
-    routineDraft.wakeTime &&
-      routineDraft.bedTime,
-  );
+  const canContinue = true;
   const previewRoutine = normalizeRoutineEntry(routineDraft);
   const schedule = getTodayScheduleBlocks({ routine: previewRoutine, homeworkItems: [], calendarTasks: [] });
 
@@ -4010,7 +4030,7 @@ function SetupScheduleBasicsScreen({
     >
       <${GraphBackdrop} />
       <div className="relative z-10 mx-auto flex w-full max-w-5xl flex-col items-center gap-5">
-        <${SetupProgress} step=${3} />
+        <${SetupProgress} step=${2} />
         <${motion.div}
           className="mood-panel routine-panel"
           initial=${{ opacity: 0, y: 28 }}
@@ -4018,7 +4038,7 @@ function SetupScheduleBasicsScreen({
           transition=${{ duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
         >
           <div className="mood-heading">
-            <p className="eyebrow">Setup 3 of 3 · Schedule</p>
+            <p className="eyebrow">Setup 2 of 2 · Schedule</p>
             <h2 className="font-display">Set Your Schedule</h2>
           </div>
           <div className="routine-form">
@@ -4037,6 +4057,15 @@ function SetupScheduleBasicsScreen({
                   help="When do you normally go to sleep?"
                   value=${routineDraft.bedTime}
                   onChange=${(value) => onRoutineChange("bedTime", value)}
+                />
+              </div>
+              <div className="setup-picker-card">
+                <${DurationScrollPicker}
+                  label="Available daily work time"
+                  help="How much task time should VIRELI plan around? If you leave this blank, VIRELI uses 4 hours."
+                  value=${routineDraft.preferredDailyWorkloadMinutes}
+                  options=${DURATION_PICKER_OPTIONS}
+                  onChange=${(value) => onRoutineChange("preferredDailyWorkloadMinutes", value)}
                 />
               </div>
             </div>
@@ -4108,6 +4137,50 @@ function CheckInTab({ moodSelection, onMoodSelect }) {
   `;
 }
 
+function LaunchCheckInScreen({ moodSelection, onMoodSelect }) {
+  const selectedMood = moodSelection || "";
+
+  return html`
+    <${motion.section}
+      className="mood-screen min-h-screen relative flex items-center justify-center overflow-hidden px-5 py-8 sm:px-8"
+      initial=${{ opacity: 0 }}
+      animate=${{ opacity: 1 }}
+      exit=${{ opacity: 0, scale: 0.985 }}
+      transition=${{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <${GraphBackdrop} />
+      <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col items-center gap-5">
+        <${motion.div}
+          className="mood-panel mood-panel-centered launch-check-in-panel"
+          initial=${{ opacity: 0, y: 24 }}
+          animate=${{ opacity: 1, y: 0 }}
+          transition=${{ duration: 0.55, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <div className="mood-heading mood-heading-centered">
+            <p className="eyebrow">Check In</p>
+            <h2 className="font-display">How are you doing today?</h2>
+          </div>
+          <div className="mood-grid mood-grid-centered">
+            ${MOOD_OPTIONS.map(
+              (option) => html`
+                <button
+                  key=${option.id}
+                  type="button"
+                  className=${cx("mood-choice", selectedMood === option.id && "is-selected")}
+                  aria-pressed=${selectedMood === option.id}
+                  onClick=${() => onMoodSelect(option.id)}
+                >
+                  <span className="mood-choice-label">${option.label}</span>
+                </button>
+              `,
+            )}
+          </div>
+        </${motion.div}>
+      </div>
+    </${motion.section}>
+  `;
+}
+
 function SetupRoutineBuilderScreen({
   routineDraft,
   onRoutineActivityChange,
@@ -4172,13 +4245,17 @@ function SetupRoutineBuilderScreen({
 }
 
 function AccountScreen({
+  profile,
   accountStep,
+  accountAuthMode,
   accountUsername,
   accountPassword,
   accountPasswordConfirm,
   accountPasswordVisible,
   accountStatus,
   accountError,
+  onContinueToVireli,
+  onAccountAuthModeChange,
   onAccountUsernameChange,
   onAccountUsernameContinue,
   onAccountBack,
@@ -4189,10 +4266,15 @@ function AccountScreen({
   onContinueAsGuest,
 }) {
   const isCreatingAccount = accountStatus === "creating";
+  const isSigningIn = accountStatus === "signing-in";
   const isCheckingUsername = accountStatus === "checking";
-  const canContinueUsername = Boolean(accountUsername.trim()) && !isCreatingAccount;
-  const canCreateAccount = Boolean(accountUsername.trim() && accountPassword && accountPasswordConfirm && !isCreatingAccount);
+  const isBusy = isCreatingAccount || isSigningIn || isCheckingUsername;
+  const canContinueUsername = Boolean(accountUsername.trim()) && !isBusy;
+  const canCreateAccount = accountAuthMode === "signin"
+    ? Boolean(accountUsername.trim() && accountPassword && !isBusy)
+    : Boolean(accountUsername.trim() && accountPassword && accountPasswordConfirm && !isBusy);
   const isPasswordStep = accountStep === "password";
+  const hasFastEntry = Boolean(profile?.setupComplete && (profile.connected || profile.guest || profile.name));
 
   return html`
     <${motion.section}
@@ -4214,12 +4296,23 @@ function AccountScreen({
               <${VireliLogoMark} animated=${true} />
             </div>
             <p className="google-auth-brand font-display">VIRELI</p>
-            <h2 className="font-display">${isPasswordStep ? "Create your password" : "Choose your username"}</h2>
-            <p>${isPasswordStep ? `Finish creating ${accountUsername || "your"} VIRELI account.` : "Start with the name you want VIRELI to use for this account."}</p>
+            <h2 className="font-display">${isPasswordStep ? (accountAuthMode === "signin" ? "Enter your password" : "Create your password") : "VIRELI Account"}</h2>
+            <p>${isPasswordStep ? `${accountAuthMode === "signin" ? "Sign in as" : "Finish creating"} ${accountUsername || "your account"}.` : "Enter with your VIRELI account, or continue quickly if this device is already set up."}</p>
           </div>
 
           ${!isPasswordStep
             ? html`
+                ${hasFastEntry
+                  ? html`
+                      <button type="button" className="primary-button auth-primary-button get-started-button" onClick=${onContinueToVireli}>
+                        Continue to VIRELI
+                      </button>
+                    `
+                  : null}
+                <div className="account-mode-toggle" role="group" aria-label="Account action">
+                  <button type="button" className=${cx("choice-chip", accountAuthMode === "signin" && "is-selected")} onClick=${() => onAccountAuthModeChange("signin")}>Sign in</button>
+                  <button type="button" className=${cx("choice-chip", accountAuthMode === "create" && "is-selected")} onClick=${() => onAccountAuthModeChange("create")}>Create account</button>
+                </div>
                 <form className="vireli-account-form" onSubmit=${onAccountUsernameContinue}>
                   <label className="field-stack">
                     <span>Username</span>
@@ -4230,7 +4323,7 @@ function AccountScreen({
                       onInput=${(event) => onAccountUsernameChange(event.target.value)}
                       placeholder="Choose a username"
                       autoComplete="username"
-                    disabled=${isCreatingAccount || isCheckingUsername}
+                    disabled=${isBusy}
                     />
                   </label>
                   ${accountError ? html`<p className="auth-inline-error">${accountError}</p>` : null}
@@ -4250,7 +4343,7 @@ function AccountScreen({
                     <strong>${accountUsername}</strong>
                   </div>
                   <label className="field-stack password-field-stack">
-                    <span>Create password</span>
+                    <span>${accountAuthMode === "signin" ? "Password" : "Create password"}</span>
                     <div className="password-input-wrap">
                 <input
                   className="planning-input auth-email-input"
@@ -4271,28 +4364,32 @@ function AccountScreen({
                 </button>
               </div>
             </label>
-                  <label className="field-stack password-field-stack">
-                    <span>Confirm password</span>
-                    <div className="password-input-wrap">
-                <input
-                  className="planning-input auth-email-input"
-                  type=${accountPasswordVisible ? "text" : "password"}
-                  value=${accountPasswordConfirm}
-                  onInput=${(event) => onAccountPasswordConfirmChange(event.target.value)}
-                  placeholder="Confirm password"
-                  autoComplete="new-password"
-                  disabled=${isCreatingAccount}
-                />
-                <button
-                  type="button"
-                  className="password-visibility-button"
-                  aria-label=${accountPasswordVisible ? "Hide password" : "Show password"}
-                  onClick=${onAccountPasswordVisibleToggle}
-                >
-                  ${accountPasswordVisible ? "Hide" : "Show"}
-                </button>
-              </div>
-            </label>
+                  ${accountAuthMode === "create"
+                    ? html`
+                        <label className="field-stack password-field-stack">
+                          <span>Confirm password</span>
+                          <div className="password-input-wrap">
+                            <input
+                              className="planning-input auth-email-input"
+                              type=${accountPasswordVisible ? "text" : "password"}
+                              value=${accountPasswordConfirm}
+                              onInput=${(event) => onAccountPasswordConfirmChange(event.target.value)}
+                              placeholder="Confirm password"
+                              autoComplete="new-password"
+                              disabled=${isCreatingAccount}
+                            />
+                            <button
+                              type="button"
+                              className="password-visibility-button"
+                              aria-label=${accountPasswordVisible ? "Hide password" : "Show password"}
+                              onClick=${onAccountPasswordVisibleToggle}
+                            >
+                              ${accountPasswordVisible ? "Hide" : "Show"}
+                            </button>
+                          </div>
+                        </label>
+                      `
+                    : null}
                   ${accountError ? html`<p className="auth-inline-error">${accountError}</p>` : null}
                   <div className="account-step-actions">
                     <button type="button" className="secondary-button" onClick=${onAccountBack} disabled=${isCreatingAccount}>
@@ -4303,7 +4400,7 @@ function AccountScreen({
                       className="primary-button auth-primary-button get-started-button"
                       disabled=${!canCreateAccount}
                     >
-                      ${isCreatingAccount ? "Creating account..." : "Create account"}
+                      ${isCreatingAccount ? "Creating account..." : isSigningIn ? "Signing in..." : accountAuthMode === "signin" ? "Sign in" : "Create account"}
                     </button>
                   </div>
                 </form>
@@ -4337,7 +4434,88 @@ function RoutineTab({
   onRoutineActivityRemove,
   onSaveRoutine,
 }) {
-  return html`<${EmptyPlannerPage} pageTitle="Your Routine" />`;
+  const visibleActivities = (Array.isArray(routineDraft.dailyActivities) && routineDraft.dailyActivities.length
+    ? routineDraft.dailyActivities
+    : [{ id: "routine-draft-first", name: "", durationMinutes: "", usualTime: "", days: "Every day", fixed: false }]
+  ).slice(0, 5);
+  const savedRoutineCount = visibleActivities.filter((activity) => String(activity.name || "").trim()).length;
+  const canAddRoutine = visibleActivities.length < 5 && visibleActivities.every((activity) => String(activity.name || "").trim() && String(activity.durationMinutes || "").trim());
+
+  return html`
+    <${motion.section}
+      key="routine"
+      className="tab-view"
+      initial=${{ opacity: 0, y: 20 }}
+      animate=${{ opacity: 1, y: 0 }}
+      exit=${{ opacity: 0, y: -16 }}
+      transition=${{ duration: 0.35 }}
+    >
+      <div className="tab-heading">
+        <div>
+          <p className="eyebrow">Your Routine</p>
+          <h1 className="font-display">What do you want to do every day?</h1>
+          <p className="tab-heading-lead">Add up to five recurring activities. VIRELI uses them when planning your day.</p>
+        </div>
+        <span className="date-chip">${savedRoutineCount} / 5 routines</span>
+      </div>
+
+      <article className="feature-card routine-simple-card">
+        <div className="daily-activity-list routine-daily-list">
+          ${visibleActivities.map(
+            (activity, index) => html`
+              <div key=${activity.id || `routine-${index}`} className="routine-daily-row">
+                <label className="field-stack routine-name-field">
+                  <span>${index === 0 ? "What do you want to do every day?" : "Routine activity"}</span>
+                  <input
+                    className="planning-input"
+                    value=${activity.name}
+                    onInput=${(event) => onRoutineActivityChange(index, "name", event.target.value)}
+                    placeholder="Piano practice"
+                  />
+                </label>
+                ${String(activity.name || "").trim()
+                  ? html`
+                      <label className="field-stack routine-duration-field">
+                        <span>How long each day?</span>
+                        <select
+                          className="planning-input"
+                          value=${activity.durationMinutes}
+                          onChange=${(event) => onRoutineActivityChange(index, "durationMinutes", event.target.value)}
+                        >
+                          <option value="">Choose duration</option>
+                          ${[5, 10, 15, 20, 30, 45, 60].map(
+                            (minutes) => html`<option key=${minutes} value=${String(minutes)}>${formatDurationFromMinutes(minutes)}</option>`,
+                          )}
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick=${() => onRoutineActivityRemove(index)}
+                        disabled=${visibleActivities.length <= 1 && !savedRoutineCount}
+                      >
+                        Delete
+                      </button>
+                    `
+                  : null}
+              </div>
+            `,
+          )}
+        </div>
+        <div className="card-footer-row">
+          <button type="button" className="secondary-button" onClick=${onRoutineActivityAdd} disabled=${!canAddRoutine}>
+            + Add Another
+          </button>
+          <button type="button" className="primary-button" onClick=${onSaveRoutine}>
+            Save routine
+          </button>
+        </div>
+        ${visibleActivities.length >= 5
+          ? html`<p className="soft-note-inline">You can keep up to five daily routines.</p>`
+          : null}
+      </article>
+    </${motion.section}>
+  `;
 
   const dailyActivities = Array.isArray(routineDraft.dailyActivities)
     ? routineDraft.dailyActivities
@@ -4689,10 +4867,115 @@ function HomeTab({
   moodSelection,
   consistencyEvents,
   onTabChange,
+  onCalendarTaskToggle,
   onHomeworkCompleteToggle,
   onHomeworkReschedule,
   onHomeworkDelete,
 }) {
+  const allTasks = [
+    ...calendarTasks.filter((item) => !item.completed).map((item) => ({ ...item, sourceKind: "task" })),
+    ...homeworkItems.filter((item) => !item.completed).map(homeworkItemToTask).map((item) => ({ ...item, sourceKind: "task" })),
+  ].filter((task, index, tasks) =>
+    tasks.findIndex((candidate) => candidate.id === task.id || (candidate.title === task.title && candidate.scheduledDate === task.scheduledDate)) === index,
+  );
+  const sortedTasks = allTasks
+    .slice()
+    .sort((a, b) => `${a.scheduledDate || a.dueDate || "9999-12-31"} ${a.scheduledTime || ""}`.localeCompare(`${b.scheduledDate || b.dueDate || "9999-12-31"} ${b.scheduledTime || ""}`));
+  const nextTask = sortedTasks[0];
+  const todaySchedule = getChronologicalDayItems({ routine, homeworkItems: [], calendarTasks, savedClasses }).slice(0, 8);
+  const completedToday = calendarTasks.filter((item) => item.completed && isDueToday(item, getDateInputValue())).length;
+
+  return html`
+    <${motion.section}
+      key="home"
+      className="tab-view"
+      initial=${{ opacity: 0, y: 20 }}
+      animate=${{ opacity: 1, y: 0 }}
+      exit=${{ opacity: 0, y: -16 }}
+      transition=${{ duration: 0.35 }}
+    >
+      <div className="tab-heading home-heading">
+        <div>
+          <p className="eyebrow">${getTimeGreeting()}, ${getFirstName(profile)}</p>
+          <h1 className="font-display">What should I do right now?</h1>
+        </div>
+      </div>
+
+      <div className="home-grid planner-dashboard-grid home-simple-grid">
+        <article className="feature-card next-task-card">
+          <p className="eyebrow">Recommended now</p>
+          ${nextTask
+            ? html`
+                <div className="next-task-main">
+                  <div>
+                    <h2 className="font-display">${nextTask.title}</h2>
+                    <p>${nextTask.scheduledTime ? `Scheduled ${formatTimeLabel(nextTask.scheduledTime)}` : "VIRELI can place this into your day."}</p>
+                  </div>
+                  <span className="date-chip">${formatDurationFromMinutes(Number(nextTask.durationMinutes) || DEFAULT_TASK_DURATION_MINUTES)}</span>
+                </div>
+                <div className="card-footer-row next-task-actions">
+                  <button type="button" className="primary-button" onClick=${() => onTabChange("calendar")}>View schedule</button>
+                  <button type="button" className="secondary-button" onClick=${() => onCalendarTaskToggle?.(nextTask.id)}>Done</button>
+                  <button type="button" className="secondary-button" onClick=${() => onTabChange("tasks")}>Move</button>
+                </div>
+              `
+            : html`
+                <h2 className="font-display">No tasks yet.</h2>
+                <p>Add something in Tasks or Ask VIRELI what to plan.</p>
+                <div className="card-footer-row">
+                  <button type="button" className="primary-button" onClick=${() => onTabChange("tasks")}>Add a task</button>
+                </div>
+              `}
+        </article>
+
+        <article className="feature-card">
+          <h3 className="font-display">Up next</h3>
+          ${sortedTasks.slice(1, 4).length
+            ? html`
+                <div className="selected-day-list">
+                  ${sortedTasks.slice(1, 4).map(
+                    (task) => html`
+                      <div key=${`up-next-${task.id}`} className="selected-day-item is-task">
+                        <div>
+                          <strong>${task.title}</strong>
+                          <span>${[task.scheduledDate ? formatShortDate(task.scheduledDate) : "", task.scheduledTime ? formatTimeLabel(task.scheduledTime) : ""].filter(Boolean).join(" · ") || "Unscheduled"}</span>
+                        </div>
+                      </div>
+                    `,
+                  )}
+                </div>
+              `
+            : html`<p>No other tasks waiting.</p>`}
+        </article>
+
+        <article className="feature-card feature-card-quote-wide">
+          <h3 className="font-display">Today’s schedule</h3>
+          ${todaySchedule.length
+            ? html`
+                <div className="selected-day-list">
+                  ${todaySchedule.map(
+                    (item) => html`
+                      <div key=${`today-${item.id}`} className=${cx("selected-day-item", `is-${item.source}`)}>
+                        <div>
+                          <strong>${item.title}</strong>
+                          <span>${item.timeLabel}</span>
+                        </div>
+                      </div>
+                    `,
+                  )}
+                </div>
+              `
+            : html`<p>Your schedule is open today.</p>`}
+        </article>
+
+        <article className="feature-card">
+          <h3 className="font-display">Daily progress</h3>
+          <p>${completedToday} completed today · ${sortedTasks.length} task${sortedTasks.length === 1 ? "" : "s"} left.</p>
+        </article>
+      </div>
+    </${motion.section}>
+  `;
+
   const recommendation = getNextAssignmentRecommendation({
     routine,
     homeworkItems,
@@ -5286,11 +5569,7 @@ function ModeItemsTab({
     .filter((item) => (item.itemType || item.type || "Task") === itemType)
     .sort((a, b) => `${a.scheduledDate || "9999-12-31"} ${a.scheduledTime || ""}`.localeCompare(`${b.scheduledDate || "9999-12-31"} ${b.scheduledTime || ""}`));
   const pageTitle = isMeeting ? "Meetings" : "Tasks";
-  const pageLead = isMeeting
-    ? "Add fixed meeting blocks so VIRELI can protect your work time and avoid conflicts."
-    : mode === "School"
-      ? "Personal responsibilities stay separate from school assignments."
-      : "Add what you need to accomplish. VIRELI will fit it around your schedule.";
+  const pageLead = "Add what you need to accomplish. VIRELI will fit it around your schedule.";
 
   if (isMeeting) {
     return html`<${EmptyPlannerPage} pageTitle="Meetings" />`;
@@ -5307,7 +5586,7 @@ function ModeItemsTab({
     >
       <div className="tab-heading">
         <div>
-          <p className="eyebrow">${mode} mode</p>
+          <p className="eyebrow">Tasks</p>
           <h1 className="font-display">${pageTitle}</h1>
           <p className="tab-heading-lead">${pageLead}</p>
         </div>
@@ -5320,15 +5599,39 @@ function ModeItemsTab({
           </div>
           <h3 className="font-display section-title-lg">${editingCalendarTaskId ? "Edit task" : "Add task"}</h3>
           <form className="calendar-add-form" onSubmit=${(event) => onModeItemSubmit("Task", event)}>
-            <label className="field-stack">
-              <span>What needs to be done?</span>
-              <input
-                className="planning-input"
-                value=${calendarTaskDraft.title}
-                onInput=${(event) => onCalendarTaskDraftChange("title", event.target.value)}
-                placeholder="Practice piano"
-              />
-            </label>
+            <div className="homework-form-grid">
+              <label className="field-stack">
+                <span>What needs to be done?</span>
+                <input
+                  className="planning-input"
+                  value=${calendarTaskDraft.title}
+                  onInput=${(event) => onCalendarTaskDraftChange("title", event.target.value)}
+                  placeholder="Practice piano"
+                />
+              </label>
+              <label className="field-stack">
+                <span>Estimated duration</span>
+                <input
+                  className="planning-input"
+                  type="number"
+                  min="5"
+                  step="5"
+                  inputMode="numeric"
+                  value=${calendarTaskDraft.durationMinutes}
+                  onInput=${(event) => onCalendarTaskDraftChange("durationMinutes", event.target.value)}
+                  placeholder="30"
+                />
+              </label>
+              <label className="field-stack">
+                <span>Optional due date</span>
+                <input
+                  className="planning-input"
+                  type="date"
+                  value=${calendarTaskDraft.dueDate}
+                  onInput=${(event) => onCalendarTaskDraftChange("dueDate", event.target.value)}
+                />
+              </label>
+            </div>
             <div className="card-footer-row">
               <span>VIRELI will choose a time using your saved schedule.</span>
               <div className="calendar-form-actions">
@@ -5618,31 +5921,19 @@ function DictationButton({ label = "Dictate", onTranscript }) {
 function CalendarTab({
   homeworkItems,
   calendarTasks,
-  calendarTaskDraft,
-  editingCalendarTaskId,
   calendarMonth,
-  calendarView,
   selectedDate,
   savedClasses,
   routine,
-  onCalendarTaskDraftChange,
-  onCalendarTaskSubmit,
-  onModeItemSubmit,
   onCalendarTaskEdit,
-  onCalendarTaskCancelEdit,
   onCalendarMonthChange,
-  onCalendarViewChange,
   onSelectedDateChange,
   onHomeworkCompleteToggle,
-  onHomeworkReschedule,
-  onHomeworkDelete,
   onCalendarTaskToggle,
-  onCalendarTaskDelete,
 }) {
   const today = getDateInputValue();
   const monthAnchor = calendarMonth || new Date();
   const monthDates = getMonthGridDates(monthAnchor);
-  const weekDates = getWeekDates(new Date(`${selectedDate || today}T12:00:00`));
   const calendarItems = [
     ...homeworkItems.map((item) => ({
       ...item,
@@ -5669,18 +5960,6 @@ function CalendarTab({
   const selectedDateValue = selectedDate || today;
   const selectedDayItems = visibleCalendarItems.filter((item) => item.calendarDate === selectedDateValue);
   const chronologicalDayItems = getChronologicalDayItems({ routine, homeworkItems, calendarTasks, dateValue: selectedDateValue, savedClasses });
-  const draftConflict = detectScheduleConflict(calendarTaskDraft, { routine, homeworkItems, calendarTasks, ignoreId: editingCalendarTaskId || calendarTaskDraft.id });
-  const dueToday = visibleCalendarItems.filter((item) => item.calendarDate === today);
-  const monthItems = visibleCalendarItems.filter((item) =>
-    item.calendarDate &&
-    new Date(`${item.calendarDate}T12:00:00`).getMonth() === monthAnchor.getMonth() &&
-    new Date(`${item.calendarDate}T12:00:00`).getFullYear() === monthAnchor.getFullYear(),
-  );
-  const selectedDaySchedule = getTodayScheduleBlocks({ routine, homeworkItems, calendarTasks, dateValue: selectedDateValue });
-  const agendaItems = visibleCalendarItems
-    .slice()
-    .sort((a, b) => `${a.calendarDate} ${a.scheduledTime || ""}`.localeCompare(`${b.calendarDate} ${b.scheduledTime || ""}`))
-    .slice(0, 20);
 
   return html`
     <${motion.section}
@@ -5697,156 +5976,117 @@ function CalendarTab({
           <h1 className="font-display">${getMonthLabel(monthAnchor)}</h1>
         </div>
         <div className="calendar-month-controls">
-          ${["horizontal", "day", "week", "month", "agenda"].map(
-            (view) => html`
-              <button
-                key=${view}
-                type="button"
-                className=${cx("secondary-button", calendarView === view && "is-active")}
-                onClick=${() => onCalendarViewChange(view)}
-              >
-                ${view.charAt(0).toUpperCase()}${view.slice(1)}
-              </button>
-            `,
-          )}
+          <button type="button" className="secondary-button" onClick=${() => onCalendarMonthChange(new Date(monthAnchor.getFullYear(), monthAnchor.getMonth() - 1, 1))}>
+            Previous
+          </button>
           <button type="button" className="secondary-button" onClick=${() => onCalendarMonthChange(new Date())}>
             Today
+          </button>
+          <button type="button" className="secondary-button" onClick=${() => onCalendarMonthChange(new Date(monthAnchor.getFullYear(), monthAnchor.getMonth() + 1, 1))}>
+            Next
           </button>
         </div>
       </div>
 
       <div className="calendar-grid calendar-view-only-grid">
         <article className="feature-card feature-card-quote-wide month-calendar-card">
-          ${calendarView === "horizontal"
-            ? html`
-                <div className="horizontal-schedule-view">
-                  <div className="horizontal-schedule-head">
-                    <h3 className="font-display">${formatShortDate(selectedDateValue)}</h3>
-                    <span>${formatTimeLabel(minutesToTimeValue(selectedDaySchedule.wakeMinutes))} - ${formatTimeLabel(minutesToTimeValue(selectedDaySchedule.bedMinutes))}</span>
+          <div className="month-calendar-grid">
+            ${WEEKDAY_LABELS.map(
+              (day) => html`<div key=${day} className="month-weekday">${day}</div>`,
+            )}
+            ${monthDates.map((dateInfo) => {
+              const itemsForDay = visibleCalendarItems.filter((item) => item.calendarDate === dateInfo.value);
+              return html`
+                <button
+                  type="button"
+                  key=${dateInfo.value}
+                  className=${cx(
+                    "month-date-cell",
+                    !dateInfo.isCurrentMonth && "is-muted",
+                    dateInfo.isToday && "is-today",
+                    dateInfo.value === selectedDateValue && "is-selected",
+                    dateInfo.value < today && "is-past",
+                  )}
+                  onClick=${() => onSelectedDateChange(dateInfo.value)}
+                  aria-label=${`Select ${formatShortDate(dateInfo.value)}`}
+                >
+                  <div className="month-date-head">
+                    <span>${dateInfo.day}</span>
                   </div>
-                  <div className="horizontal-timeline" role="list" aria-label="Horizontal schedule">
-                    ${selectedDaySchedule.timelineBlocks.map((item) => {
-                      const totalMinutes = Math.max(1, selectedDaySchedule.bedMinutes - selectedDaySchedule.wakeMinutes);
-                      const width = Math.max(8, ((item.endMinutes - item.startMinutes) / totalMinutes) * 100);
-                      return html`
-                        <div
-                          key=${`horizontal-${item.id}`}
-                          className=${cx("horizontal-time-block", `is-${item.source}`)}
-                          style=${{ flexBasis: `${width}%` }}
-                          role="listitem"
-                        >
-                          <strong>${item.title}</strong>
-                          <span>${formatTimeLabel(minutesToTimeValue(item.startMinutes))}</span>
-                        </div>
-                      `;
-                    })}
-                  </div>
-                </div>
-              `
-            : calendarView === "agenda"
-              ? html`
-                  <div className="agenda-view">
-                    <h3 className="font-display">Agenda</h3>
-                    ${agendaItems.length
-                      ? html`
-                          <div className="selected-day-list">
-                            ${agendaItems.map(
-                              (item) => html`
-                                <div key=${`agenda-${item.calendarId}`} className=${cx("selected-day-item", `is-${item.source}`)}>
-                                  <div>
-                                    <strong>${item.title}</strong>
-                                    <span>${[formatShortDate(item.calendarDate), item.scheduledTime ? formatTimeLabel(item.scheduledTime) : "", item.sourceLabel, item.subject].filter(Boolean).join(" · ")}</span>
-                                  </div>
-                                </div>
-                              `,
-                            )}
-                          </div>
-                        `
-                      : html`<p>No upcoming schedule items yet.</p>`}
-                  </div>
-                `
-              : calendarView === "day"
-            ? html`
-                <div className="calendar-day-focus">
-                  <h3 className="font-display">${formatShortDate(selectedDateValue)}</h3>
-                  <div className="selected-day-list">
-                    ${chronologicalDayItems.map(
+                  <div className="month-date-items">
+                    ${itemsForDay.slice(0, 3).map(
                       (item) => html`
-                        <div key=${`day-${item.id}`} className=${cx("selected-day-item", `is-${item.source}`)}>
-                          <div>
-                            <strong>${item.title}</strong>
-                            <span>${item.sourceLabel} · ${item.timeLabel} · ${item.durationLabel}</span>
-                          </div>
-                        </div>
+                        <span
+                          key=${item.calendarId}
+                          className=${cx("month-event-chip", item.completed && "is-complete")}
+                        >
+                          ${item.title}
+                        </span>
                       `,
                     )}
+                    ${itemsForDay.length > 3
+                      ? html`<small className="month-more-count">+${itemsForDay.length - 3} more</small>`
+                      : null}
                   </div>
+                </button>
+              `;
+            })}
+          </div>
+        </article>
+        <article className="feature-card selected-day-panel">
+          <div className="card-topline card-topline-simple">
+            <span className="mood-chip">Selected day</span>
+          </div>
+          <h3 className="font-display">${formatShortDate(selectedDateValue)}</h3>
+          ${selectedDayItems.length
+            ? html`
+                <div className="selected-day-list">
+                  ${selectedDayItems.map(
+                    (item) => html`
+                      <div key=${`selected-${item.calendarId}`} className=${cx("selected-day-item", `is-${item.source}`)}>
+                        <div>
+                          <strong>${item.title}</strong>
+                          <span>${[
+                            item.scheduledTime ? formatTimeLabel(item.scheduledTime) : "Any time",
+                            item.sourceLabel,
+                            item.subject,
+                          ].filter(Boolean).join(" · ")}</span>
+                        </div>
+                        <div className="calendar-detail-actions">
+                          ${item.source === "task"
+                            ? html`
+                                <button type="button" className="secondary-button" onClick=${() => onCalendarTaskToggle(item.id)}>
+                                  Done
+                                </button>
+                                <button type="button" className="secondary-button" onClick=${() => onCalendarTaskEdit(item.id)}>
+                                  Edit
+                                </button>
+                              `
+                            : item.source === "homework"
+                              ? html`<button type="button" className="secondary-button" onClick=${() => onHomeworkCompleteToggle(item.id)}>Done</button>`
+                              : null}
+                        </div>
+                      </div>
+                    `,
+                  )}
                 </div>
               `
-            : calendarView === "week"
-              ? html`
-                  <div className="week-calendar-grid">
-                    ${weekDates.map((dateInfo) => {
-                      const itemsForDay = visibleCalendarItems.filter((item) => item.calendarDate === dateInfo.value);
-                      return html`
-                        <button
-                          type="button"
-                          key=${`week-${dateInfo.value}`}
-                          className=${cx("week-date-cell", dateInfo.isToday && "is-today", dateInfo.value === selectedDateValue && "is-selected")}
-                          onClick=${() => onSelectedDateChange(dateInfo.value)}
-                        >
-                          <span>${dateInfo.label}</span>
-                          <strong>${dateInfo.day}</strong>
-                          ${itemsForDay.slice(0, 4).map((item) => html`<small key=${item.calendarId}>${item.title}</small>`)}
-                        </button>
-                      `;
-                    })}
+            : html`<p>No tasks are scheduled for this day.</p>`}
+          <div className="calendar-day-focus compact-day-flow">
+            <h4 className="font-display">Day flow</h4>
+            <div className="selected-day-list">
+              ${chronologicalDayItems.slice(0, 8).map(
+                (item) => html`
+                  <div key=${`day-flow-${item.id}`} className=${cx("selected-day-item", `is-${item.source}`)}>
+                    <div>
+                      <strong>${item.title}</strong>
+                      <span>${item.timeLabel} · ${item.durationLabel}</span>
+                    </div>
                   </div>
-                `
-              : html`
-                  <div className="month-calendar-grid">
-                    ${WEEKDAY_LABELS.map(
-                      (day) => html`<div key=${day} className="month-weekday">${day}</div>`,
-                    )}
-                    ${monthDates.map((dateInfo) => {
-                      const itemsForDay = visibleCalendarItems.filter((item) => item.calendarDate === dateInfo.value);
-                      return html`
-                        <button
-                          type="button"
-                          key=${dateInfo.value}
-                          className=${cx(
-                            "month-date-cell",
-                            !dateInfo.isCurrentMonth && "is-muted",
-                            dateInfo.isToday && "is-today",
-                            dateInfo.value === selectedDateValue && "is-selected",
-                            dateInfo.value < today && "is-past",
-                          )}
-                          onClick=${() => onSelectedDateChange(dateInfo.value)}
-                          aria-label=${`Select ${formatShortDate(dateInfo.value)}`}
-                        >
-                          <div className="month-date-head">
-                            <span>${dateInfo.day}</span>
-                          </div>
-                          <div className="month-date-items">
-                            ${itemsForDay.slice(0, 3).map(
-                              (item) => html`
-                                <span
-                                  key=${item.calendarId}
-                                  className=${cx("month-event-chip", item.completed && "is-complete")}
-                                >
-                                  ${item.sourceLabel || item.subject}: ${item.title}
-                                </span>
-                              `,
-                            )}
-                            ${itemsForDay.length > 3
-                              ? html`<small className="month-more-count">+${itemsForDay.length - 3} more</small>`
-                              : null}
-                          </div>
-                        </button>
-                      `;
-                    })}
-                  </div>
-                `}
+                `,
+              )}
+            </div>
+          </div>
         </article>
       </div>
     </${motion.section}>
@@ -5995,6 +6235,61 @@ function AskVireliTab({
   `;
 }
 
+function ImproveTab({
+  feedbackDraft,
+  feedbackSubmitted,
+  onFeedbackChange,
+  onFeedbackAreaChange,
+  onFeedbackSubmit,
+}) {
+  return html`
+    <${motion.section}
+      key="improve"
+      className="tab-view"
+      initial=${{ opacity: 0, y: 20 }}
+      animate=${{ opacity: 1, y: 0 }}
+      exit=${{ opacity: 0, y: -16 }}
+      transition=${{ duration: 0.35 }}
+    >
+      <div className="tab-heading">
+        <div>
+          <p className="eyebrow">Feedback</p>
+          <h1 className="font-display">How can we improve VIRELI?</h1>
+        </div>
+      </div>
+
+      <article className="feature-card improve-card">
+        ${feedbackSubmitted
+          ? html`<div className="status-banner status-banner-soft">Saved. Thank you for helping improve VIRELI.</div>`
+          : null}
+        <label className="field-stack">
+          <span>Category</span>
+          <select className="planning-input" value=${feedbackDraft.area} onChange=${(event) => onFeedbackAreaChange(event.target.value)}>
+            <option value="">Choose a category</option>
+            ${FEEDBACK_AREAS.map((area) => html`<option key=${area} value=${area}>${area}</option>`)}
+          </select>
+        </label>
+        <label className="field-stack">
+          <span>What should VIRELI improve?</span>
+          <textarea
+            className="feedback-input"
+            value=${feedbackDraft.text}
+            onInput=${(event) => onFeedbackChange(event.target.value)}
+            placeholder="Tell VIRELI what feels confusing, broken, helpful, or missing."
+            rows="8"
+          ></textarea>
+        </label>
+        <div className="card-footer-row">
+          <span>One clear note is enough.</span>
+          <button type="button" className="primary-button" onClick=${onFeedbackSubmit} disabled=${!feedbackDraft.text.trim()}>
+            Submit
+          </button>
+        </div>
+      </article>
+    </${motion.section}>
+  `;
+}
+
 function SettingsTab({
   savedClasses,
   classDraft,
@@ -6031,20 +6326,12 @@ function SettingsTab({
   const settingsSections = [
     { id: "account", title: "Account", summary: accountSummary },
     { id: "profile", title: "Profile", summary: profile.name || "Name" },
-    { id: "mode", title: "VIRELI Mode", summary: profile.primaryUse || "School" },
-    { id: "subjects", title: "Subjects", summary: `${savedClasses.length} saved` },
-    { id: "calendar", title: "Calendar", summary: "Views and display" },
+    { id: "schedule", title: "Schedule", summary: "Wake, sleep, and task time" },
+    { id: "calendar", title: "Calendar", summary: "Month view" },
     { id: "notifications", title: "Notifications", summary: calendarPreferences.remindersEnabled ? "On" : "Off" },
-    {
-      id: "scheduling",
-      title: "Schedule",
-      summary: routineDraft.preferredDailyWorkloadMinutes
-        ? formatDurationFromMinutes(Number(routineDraft.preferredDailyWorkloadMinutes))
-        : "Set limits",
-    },
     { id: "privacy", title: "Privacy & Data", summary: "Local storage" },
     { id: "appearance", title: "Appearance", summary: "Automatic" },
-    { id: "other", title: "Other Preferences", summary: `${archivedAskHistory.length} archived chats` },
+    { id: "security", title: "Security", summary: profile.authMode === "vireli-account" ? "Password" : "Guest" },
   ];
   const activeSection = settingsSections.find((section) => section.id === activeSettingsSection);
 
@@ -6123,32 +6410,6 @@ function SettingsTab({
       `;
     }
 
-    if (activeSettingsSection === "mode") {
-      return html`
-        <div className="settings-detail-body">
-          <p>Mode changes VIRELI’s pages and terminology without deleting hidden data.</p>
-          <div className="setup-choice-grid">
-            ${PRIMARY_USE_OPTIONS.map(
-              (option) => html`
-                <button
-                  key=${option}
-                  type="button"
-                  className=${cx("mood-choice setup-choice", (profileDraft.primaryUse || profile.primaryUse) === option && "is-selected")}
-                  aria-pressed=${(profileDraft.primaryUse || profile.primaryUse) === option}
-                  onClick=${() => onProfileDraftChange("primaryUse", option)}
-                >
-                  <span className="mood-choice-label">${option}</span>
-                </button>
-              `,
-            )}
-          </div>
-          <button type="button" className="primary-button" onClick=${onSaveProfileSettings} disabled=${!profileDraft.primaryUse}>
-            Save mode
-          </button>
-        </div>
-      `;
-    }
-
     if (activeSettingsSection === "subjects") {
       return html`
         <div className="settings-detail-body">
@@ -6196,26 +6457,27 @@ function SettingsTab({
     if (activeSettingsSection === "calendar") {
       return html`
         <div className="settings-detail-body">
-          <p>Calendar shows the same schedule as horizontal, day, week, month, and agenda views. Add items from Assignments, Tasks, Meetings, Your Routine, or Ask VIRELI.</p>
+          <p>Calendar shows your month, highlights today, and opens a selected-day task list when you choose a date.</p>
           <div className="soft-note"><p>Calendar is view-only so schedule data does not get duplicated.</p></div>
         </div>
       `;
     }
 
-    if (activeSettingsSection === "scheduling") {
+    if (activeSettingsSection === "schedule") {
       return html`
         <div className="settings-detail-body">
-          <p>These preferences help VIRELI suggest realistic blocks without filling every open minute.</p>
-          <${DurationScrollPicker} label="Preferred daily workload hours" value=${routineDraft.preferredDailyWorkloadMinutes} options=${DURATION_PICKER_OPTIONS} onChange=${(value) => onRoutineChange("preferredDailyWorkloadMinutes", value)} />
-          <${DurationScrollPicker} label="Preferred work interval" value=${routineDraft.preferredWorkIntervalMinutes} options=${INTERVAL_PICKER_OPTIONS} onChange=${(value) => onRoutineChange("preferredWorkIntervalMinutes", value)} />
+          <p>These values help VIRELI place tasks without filling every open minute.</p>
           <label className="field-stack">
-            <span>Mood influence strength</span>
-            <select className="planning-input" value=${profile.schedulingPreferences?.moodInfluenceStrength || "Medium"} onChange=${(event) => onSchedulingPreferenceChange("moodInfluenceStrength", event.target.value)}>
-              ${["Off", "Light", "Medium", "Strong"].map((option) => html`<option key=${option} value=${option}>${option}</option>`)}
-            </select>
+            <span>Wake-up time</span>
+            <input className="planning-input" type="time" value=${routineDraft.wakeTime} onInput=${(event) => onRoutineChange("wakeTime", event.target.value)} />
           </label>
+          <label className="field-stack">
+            <span>Sleep time</span>
+            <input className="planning-input" type="time" value=${routineDraft.bedTime} onInput=${(event) => onRoutineChange("bedTime", event.target.value)} />
+          </label>
+          <${DurationScrollPicker} label="Preferred daily workload hours" value=${routineDraft.preferredDailyWorkloadMinutes} options=${DURATION_PICKER_OPTIONS} onChange=${(value) => onRoutineChange("preferredDailyWorkloadMinutes", value)} />
           <div className="settings-action-row">
-            <button type="button" className="primary-button" onClick=${onSaveRoutine}>Save scheduling preferences</button>
+            <button type="button" className="primary-button" onClick=${onSaveRoutine}>Save schedule</button>
             <button type="button" className="secondary-button" onClick=${() => onTabChange("routine")}>Open Your Routine</button>
           </div>
         </div>
@@ -6225,7 +6487,7 @@ function SettingsTab({
     if (activeSettingsSection === "privacy") {
       return html`
         <div className="settings-detail-body">
-          <p>VIRELI stores your schedule, check-ins, routine, feedback, and personalization data on this device so planning can keep working between visits.</p>
+          <p>VIRELI stores your schedule, tasks, check-ins, routine, feedback, and personalization data on this device so planning can keep working between visits.</p>
           <div className="soft-note"><p>VIRELI keeps the visible account flow simple and does not connect to outside calendars or inboxes.</p></div>
         </div>
       `;
@@ -6243,27 +6505,29 @@ function SettingsTab({
       `;
     }
 
-    if (activeSettingsSection === "other") {
+    if (activeSettingsSection === "security") {
       return html`
         <div className="settings-detail-body">
-          <p>Archived Ask VIRELI conversations stay out of the main planner.</p>
-          <div className="history-list">
-            ${archivedAskHistory.length
-              ? archivedAskHistory.map(
-                  (chat) => html`
-                    <details key=${chat.id} className="history-item">
-                      <summary>
-                        <span>${chat.summary || "Ask VIRELI chat"}</span>
-                        <small>${formatDateTime(chat.updatedAt)}</small>
-                      </summary>
-                      <div className="history-messages">
-                        ${(chat.messages || []).slice(-6).map((message) => html`<p key=${message.id}><strong>${message.role}:</strong> ${message.content}</p>`)}
-                      </div>
-                    </details>
-                  `,
-                )
-              : html`<div className="soft-note"><p>No archived chats.</p></div>`}
-          </div>
+          <p>${profile.authMode === "vireli-account" ? "Change your VIRELI account password." : "Create or sign into a VIRELI account to use password security."}</p>
+          <form className="settings-password-form" onSubmit=${onPasswordSubmit}>
+            <label className="field-stack">
+              <span>Current password</span>
+              <input className="planning-input" type="password" value=${passwordDraft.currentPassword} onInput=${(event) => onPasswordDraftChange("currentPassword", event.target.value)} placeholder="Current password" autoComplete="current-password" disabled=${profile.authMode !== "vireli-account" || passwordDraft.status === "saving"} />
+            </label>
+            <label className="field-stack">
+              <span>New password</span>
+              <input className="planning-input" type="password" value=${passwordDraft.newPassword} onInput=${(event) => onPasswordDraftChange("newPassword", event.target.value)} placeholder="New password" autoComplete="new-password" disabled=${profile.authMode !== "vireli-account" || passwordDraft.status === "saving"} />
+            </label>
+            <label className="field-stack">
+              <span>Confirm new password</span>
+              <input className="planning-input" type="password" value=${passwordDraft.confirmPassword} onInput=${(event) => onPasswordDraftChange("confirmPassword", event.target.value)} placeholder="Confirm new password" autoComplete="new-password" disabled=${profile.authMode !== "vireli-account" || passwordDraft.status === "saving"} />
+            </label>
+            ${passwordDraft.error ? html`<p className="auth-inline-error">${passwordDraft.error}</p>` : null}
+            ${passwordDraft.message ? html`<p className="email-auth-message">${passwordDraft.message}</p>` : null}
+            <button type="submit" className="secondary-button" disabled=${profile.authMode !== "vireli-account" || passwordDraft.status === "saving" || !passwordDraft.currentPassword || !passwordDraft.newPassword || !passwordDraft.confirmPassword}>
+              ${passwordDraft.status === "saving" ? "Saving..." : "Change password"}
+            </button>
+          </form>
         </div>
       `;
     }
@@ -6329,6 +6593,8 @@ function DashboardShell({
   moodSelection,
   moodInfo,
   moodNote,
+  feedbackDraft,
+  feedbackSubmitted,
   chatDraft,
   messages,
   recentAskHistory,
@@ -6392,6 +6658,9 @@ function DashboardShell({
   onChatDraftChange,
   onChatSubmit,
   onChatRetry,
+  onFeedbackChange,
+  onFeedbackAreaChange,
+  onFeedbackSubmit,
   onThoughtDraftChange,
   onThoughtAdd,
   onThoughtUpdate,
@@ -6405,14 +6674,20 @@ function DashboardShell({
   onCalendarPreferenceChange,
   onSchedulingPreferenceChange,
 }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(() => loadSidebarState().open);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => loadSidebarState().collapsed);
   let activeView = null;
-  const primaryUse = profile.primaryUse || profileDraft.primaryUse || "School";
-  const primaryNavItems = getPrimaryNavItems(primaryUse);
+  const primaryNavItems = getPrimaryNavItems();
   const topSchedule = getTodayScheduleBlocks({ routine, homeworkItems, calendarTasks });
   const pageLabel = NAV_ITEMS.find((item) => item.id === activeTab)?.label || "Home";
-  const askPromptChips = getAskPromptChips({ routine, homeworkItems, calendarTasks, mood: moodSelection, primaryUse });
+  const askPromptChips = getAskPromptChips({ routine, homeworkItems, calendarTasks, mood: moodSelection });
+
+  useEffect(() => {
+    writePersistentObject(SIDEBAR_STORAGE_KEY, {
+      open: sidebarOpen,
+      collapsed: sidebarCollapsed,
+    });
+  }, [sidebarOpen, sidebarCollapsed]);
 
   if (activeTab === "home") {
     activeView = html`
@@ -6425,6 +6700,7 @@ function DashboardShell({
         savedClasses=${savedClasses}
         moodSelection=${moodSelection}
         onTabChange=${onTabChange}
+        onCalendarTaskToggle=${onCalendarTaskToggle}
         onHomeworkCompleteToggle=${onHomeworkCompleteToggle}
         onHomeworkReschedule=${onHomeworkReschedule}
         onHomeworkDelete=${onHomeworkDelete}
@@ -6448,25 +6724,8 @@ function DashboardShell({
   } else if (activeTab === "tasks") {
     activeView = html`
       <${ModeItemsTab}
-        mode=${primaryUse}
+        mode="Tasks"
         itemType="Task"
-        calendarTasks=${calendarTasks}
-        calendarTaskDraft=${calendarTaskDraft}
-        editingCalendarTaskId=${editingCalendarTaskId}
-        selectedDate=${selectedCalendarDate}
-        onCalendarTaskDraftChange=${onCalendarTaskDraftChange}
-        onModeItemSubmit=${onModeItemSubmit}
-        onCalendarTaskEdit=${onCalendarTaskEdit}
-        onCalendarTaskCancelEdit=${onCalendarTaskCancelEdit}
-        onCalendarTaskToggle=${onCalendarTaskToggle}
-        onCalendarTaskDelete=${onCalendarTaskDelete}
-      />
-    `;
-  } else if (activeTab === "meetings") {
-    activeView = html`
-      <${ModeItemsTab}
-        mode=${primaryUse}
-        itemType="Meeting"
         calendarTasks=${calendarTasks}
         calendarTaskDraft=${calendarTaskDraft}
         editingCalendarTaskId=${editingCalendarTaskId}
@@ -6536,11 +6795,14 @@ function DashboardShell({
         onChatRetry=${onChatRetry}
       />
     `;
-  } else if (activeTab === "check-in") {
+  } else if (activeTab === "improve") {
     activeView = html`
-      <${CheckInTab}
-        moodSelection=${moodSelection}
-        onMoodSelect=${onMoodSelect}
+      <${ImproveTab}
+        feedbackDraft=${feedbackDraft}
+        feedbackSubmitted=${feedbackSubmitted}
+        onFeedbackChange=${onFeedbackChange}
+        onFeedbackAreaChange=${onFeedbackAreaChange}
+        onFeedbackSubmit=${onFeedbackSubmit}
       />
     `;
   } else {
@@ -6585,35 +6847,37 @@ function DashboardShell({
       <${CircleBackdrop} />
 
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-[1480px] flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
-        <header className="surface-panel topbar app-topbar">
+        ${!sidebarOpen
+          ? html`
           <button
             type="button"
-            className="sidebar-toggle-button js-sidebar-menu-button"
-            aria-label="Open navigation"
+            className="sidebar-toggle-button sidebar-floating-button"
+            aria-label="Open navigation menu"
             aria-expanded=${sidebarOpen}
             onClick=${() => setSidebarOpen(true)}
           >
-            Menu
+            ☰
           </button>
-          <div className="topbar-brand-mark topbar-centered-logo" aria-label="VIRELI">
-            <${VireliLogoMark} className="brand-mark" />
-          </div>
-          <h1 className="topbar-page-name font-display">${pageLabel}</h1>
-        </header>
+        `
+          : null}
 
         ${sidebarOpen
           ? html`<button type="button" className="sidebar-scrim" aria-label="Close navigation" onClick=${() => setSidebarOpen(false)}></button>`
           : null}
 
-        <div className=${cx("dashboard-layout has-sidebar", sidebarCollapsed && "is-sidebar-collapsed")}>
+        <div className=${cx("dashboard-layout has-sidebar", !sidebarOpen && "is-sidebar-closed", sidebarCollapsed && "is-sidebar-collapsed")}>
           <aside className=${cx("surface-panel sidebar-panel app-sidebar", sidebarOpen && "is-open", sidebarCollapsed && "is-collapsed")}>
             <div className="sidebar-head">
               <div>
+                <div className="sidebar-logo-lockup">
+                  <${VireliLogoMark} className="brand-mark" />
+                  <span className="font-display">VIRELI</span>
+                </div>
                 <p className="eyebrow">Navigation</p>
-                <h2 className="font-display">Navigate through VIRELI</h2>
               </div>
               <div className="sidebar-head-actions">
                 <button type="button" className="sidebar-icon-button is-mobile-only" aria-label="Close navigation" onClick=${() => setSidebarOpen(false)}>Close</button>
+                <button type="button" className="sidebar-icon-button is-desktop-only" aria-label="Close navigation" onClick=${() => setSidebarOpen(false)}>Close</button>
                 <button
                   type="button"
                   className="sidebar-icon-button is-desktop-only"
@@ -6634,7 +6898,9 @@ function DashboardShell({
                     className=${cx("nav-button", activeTab === item.id && "is-active")}
                     onClick=${() => {
                       onTabChange(item.id);
-                      setSidebarOpen(false);
+                      if (typeof window !== "undefined" && window.innerWidth <= 900) {
+                        setSidebarOpen(false);
+                      }
                     }}
                   >
                     <span className="nav-label">${item.label}</span>
@@ -6658,10 +6924,7 @@ function App() {
   const [introComplete, setIntroComplete] = useState(false);
   const [moodSelection, setMoodSelection] = useState("");
   const [moodNote, setMoodNote] = useState("");
-  const [moodCheckInComplete, setMoodCheckInComplete] = useState(() => {
-    const savedProfile = loadProfile();
-    return Boolean(savedProfile.setupComplete);
-  });
+  const [moodCheckInComplete, setMoodCheckInComplete] = useState(false);
   const [profileStepComplete, setProfileStepComplete] = useState(false);
   const [launchSetupStep, setLaunchSetupStep] = useState(1);
   const [launchSetupComplete, setLaunchSetupComplete] = useState(false);
@@ -6670,6 +6933,8 @@ function App() {
     return Boolean(savedProfile.setupComplete);
   });
   const [activeTab, setActiveTab] = useState("home");
+  const [feedbackDraft, setFeedbackDraft] = useState(EMPTY_FEEDBACK_DRAFT);
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   const [chatDraft, setChatDraft] = useState("");
   const [responseType, setResponseType] = useState("conversation");
   const [pendingScheduleSuggestion, setPendingScheduleSuggestion] = useState(null);
@@ -6678,6 +6943,7 @@ function App() {
   const [profile, setProfile] = useState(loadProfile);
   const [profileDraft, setProfileDraft] = useState(() => loadProfile());
   const [accountStep, setAccountStep] = useState("username");
+  const [accountAuthMode, setAccountAuthMode] = useState("signin");
   const [accountUsername, setAccountUsername] = useState("");
   const [accountPassword, setAccountPassword] = useState("");
   const [accountPasswordConfirm, setAccountPasswordConfirm] = useState("");
@@ -6714,7 +6980,7 @@ function App() {
   const [customClassNames, setCustomClassNames] = useState([]);
   const [homeworkItems, setHomeworkItems] = useState(loadSavedHomework);
   const [homeworkDraft, setHomeworkDraft] = useState(EMPTY_HOMEWORK_DRAFT);
-  const [calendarTasks, setCalendarTasks] = useState(loadCalendarTasks);
+  const [calendarTasks, setCalendarTasks] = useState(loadUnifiedCalendarTasks);
   const [calendarTaskDraft, setCalendarTaskDraft] = useState(EMPTY_CALENDAR_TASK_DRAFT);
   const [editingCalendarTaskId, setEditingCalendarTaskId] = useState("");
   const [calendarMonth, setCalendarMonth] = useState(new Date());
@@ -6736,7 +7002,7 @@ function App() {
   const themeName = getMoodTheme(moodSelection);
   const recentAskHistory = useMemo(() => getRecentAskHistory(askHistory), [askHistory]);
   const archivedAskHistory = useMemo(() => getArchivedAskHistory(askHistory), [askHistory]);
-  const currentSetupStep = Math.max(1, Math.min(3, Number(launchSetupStep || 1)));
+  const currentSetupStep = Math.max(1, Math.min(2, Number(launchSetupStep || 1)));
   const dashboardReady = profileStepComplete && launchSetupComplete;
 
   function persistAskConversation(nextMessages = messages) {
@@ -6861,11 +7127,11 @@ function App() {
   }, [profile]);
 
   useEffect(() => {
-    const visibleIds = getPrimaryNavItems(profile.primaryUse || "School").map((item) => item.id);
+    const visibleIds = getPrimaryNavItems().map((item) => item.id);
     if (!visibleIds.includes(activeTab) && activeTab !== "settings") {
       setActiveTab("home");
     }
-  }, [activeTab, profile.primaryUse]);
+  }, [activeTab]);
 
   useEffect(() => {
     writePersistentArray(THOUGHT_STORAGE_KEY, thoughts);
@@ -6887,7 +7153,20 @@ function App() {
           return;
         }
 
-        completeAuthenticatedProfile(session.user, session.user.authMode || "email");
+        const sessionProfile = {
+          ...profile,
+          connected: true,
+          guest: false,
+          name: session.user.name || session.user.username || session.user.email || profile.name || "",
+          email: session.user.email || profile.email || "",
+          username: session.user.username || profile.username || "",
+          authMode: session.user.authMode || "vireli-account",
+          setupComplete: Boolean(profile.setupComplete),
+          setupStep: profile.setupComplete ? 2 : Math.max(1, Math.min(2, Number(profile.setupStep || 1))),
+          updatedAt: new Date().toISOString(),
+        };
+        setProfile(sessionProfile);
+        setProfileDraft({ ...sessionProfile, name: sessionProfile.name || "" });
       })
       .catch(() => {});
   }, []);
@@ -6931,6 +7210,12 @@ function App() {
     askSessionIdRef.current = makeId("ask-session");
     setMessages(buildInitialMessages(choice));
     setMoodCheckInComplete(true);
+    setLaunchSetupComplete(Boolean(profile.setupComplete));
+    if (!profile.setupComplete) {
+      setLaunchSetupStep(Math.max(1, Math.min(2, Number(profile.setupStep || 1))));
+    } else {
+      setActiveTab("home");
+    }
     setProfile((currentProfile) => {
       const nextProfile = {
         ...currentProfile,
@@ -6945,7 +7230,7 @@ function App() {
 
   function advanceSetupStep(nextStep, changes = {}) {
     const now = new Date().toISOString();
-    const normalizedStep = Math.max(1, Math.min(3, Number(nextStep || 1)));
+    const normalizedStep = Math.max(1, Math.min(2, Number(nextStep || 1)));
     setLaunchSetupStep(normalizedStep);
     setProfile((currentProfile) => {
       const nextProfile = {
@@ -6988,12 +7273,14 @@ function App() {
       primaryUse: modeDraft.primaryUse,
     };
 
-    advanceSetupStep(3, updates);
+    advanceSetupStep(2, updates);
   }
 
   function handleScheduleBasicsContinue() {
     const nextRoutine = saveRoutine({
       ...routineDraft,
+      wakeTime: routineDraft.wakeTime || "07:00",
+      bedTime: routineDraft.bedTime || "22:00",
       preferredDailyWorkloadMinutes: routineDraft.preferredDailyWorkloadMinutes || String(DEFAULT_DAILY_WORKLOAD_MINUTES),
       preferredWorkIntervalMinutes: "",
       preferredWorkIntervalLabel: "",
@@ -7002,13 +7289,13 @@ function App() {
     setRoutineDraft(nextRoutine);
     setRoutineStepComplete(true);
     setLaunchSetupComplete(true);
-    setLaunchSetupStep(3);
+    setLaunchSetupStep(2);
     setActiveTab("home");
     setProfile((currentProfile) => {
       const nextProfile = {
         ...currentProfile,
         setupComplete: true,
-        setupStep: 3,
+        setupStep: 2,
         routineSetupSkipped: false,
         updatedAt: new Date().toISOString(),
       };
@@ -7030,6 +7317,21 @@ function App() {
     setAccountUsername(value);
   }
 
+  function handleAccountAuthModeChange(mode) {
+    setAccountAuthMode(mode);
+    setAccountError("");
+    setAccountPassword("");
+    setAccountPasswordConfirm("");
+  }
+
+  function handleContinueToVireli() {
+    setProfileStepComplete(true);
+    setMoodCheckInComplete(false);
+    setLaunchSetupStep(profile.setupComplete ? 2 : Math.max(1, Math.min(2, Number(profile.setupStep || 1))));
+    setLaunchSetupComplete(Boolean(profile.setupComplete));
+    setActiveTab("home");
+  }
+
   async function handleAccountUsernameContinue(event) {
     event?.preventDefault?.();
     const username = accountUsername.trim();
@@ -7045,7 +7347,7 @@ function App() {
       setAccountError("Use only letters, numbers, dots, dashes, or underscores.");
       return;
     }
-    if (/^https?:$/.test(window.location.protocol)) {
+    if (accountAuthMode === "create" && /^https?:$/.test(window.location.protocol)) {
       setAccountStatus("checking");
       try {
         const response = await fetch("/api/auth/vireli/check-username", {
@@ -7180,7 +7482,7 @@ function App() {
       routineSetupSkipped: profile.routineSetupSkipped,
       primaryUse: profile.primaryUse,
       setupComplete: Boolean(profile.setupComplete),
-      setupStep: profile.setupComplete ? 3 : Math.max(1, Math.min(3, Number(profile.setupStep || 1))),
+      setupStep: profile.setupComplete ? 2 : Math.max(1, Math.min(2, Number(profile.setupStep || 1))),
       timezone: profile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
       schedulingPreferences: {
         ...EMPTY_PROFILE.schedulingPreferences,
@@ -7195,8 +7497,9 @@ function App() {
     setProfileDraft(nextDraft);
     setRoutineDraft(getBlankSetupRoutineDraft(routine));
     setProfileStepComplete(true);
-    setLaunchSetupStep(1);
-    setLaunchSetupComplete(false);
+    setMoodCheckInComplete(false);
+    setLaunchSetupStep(nextProfile.setupComplete ? 2 : Math.max(1, Math.min(2, Number(nextProfile.setupStep || 1))));
+    setLaunchSetupComplete(Boolean(nextProfile.setupComplete));
   }
 
   function handleAccountSubmit(event, authMode = "signin") {
@@ -7222,7 +7525,7 @@ function App() {
       routineSetupSkipped: profile.routineSetupSkipped,
       primaryUse: profile.primaryUse,
       setupComplete: Boolean(profile.setupComplete),
-      setupStep: profile.setupComplete ? 3 : Math.max(1, Math.min(3, Number(profile.setupStep || 1))),
+      setupStep: profile.setupComplete ? 2 : Math.max(1, Math.min(2, Number(profile.setupStep || 1))),
       timezone: profile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
       schedulingPreferences: {
         ...EMPTY_PROFILE.schedulingPreferences,
@@ -7237,8 +7540,9 @@ function App() {
     setProfileDraft(nextDraft);
     setRoutineDraft(getBlankSetupRoutineDraft(routine));
     setProfileStepComplete(true);
-    setLaunchSetupStep(1);
-    setLaunchSetupComplete(false);
+    setMoodCheckInComplete(false);
+    setLaunchSetupStep(nextProfile.setupComplete ? 2 : Math.max(1, Math.min(2, Number(nextProfile.setupStep || 1))));
+    setLaunchSetupComplete(Boolean(nextProfile.setupComplete));
   }
 
   async function handleVireliAccountSubmit(event) {
@@ -7251,12 +7555,12 @@ function App() {
       return;
     }
 
-    if (accountPassword.length < 8) {
+    if (accountAuthMode === "create" && accountPassword.length < 8) {
       setAccountError("Use at least 8 characters for your password.");
       return;
     }
 
-    if (accountPassword !== accountPasswordConfirm) {
+    if (accountAuthMode === "create" && accountPassword !== accountPasswordConfirm) {
       setAccountError("Passwords do not match.");
       return;
     }
@@ -7266,11 +7570,11 @@ function App() {
       return;
     }
 
-    setAccountStatus("creating");
+    setAccountStatus(accountAuthMode === "signin" ? "signing-in" : "creating");
     setAccountError("");
 
     try {
-      const response = await fetch("/api/auth/vireli/register", {
+      const response = await fetch(accountAuthMode === "signin" ? "/api/auth/vireli/login" : "/api/auth/vireli/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
@@ -7282,7 +7586,7 @@ function App() {
       const payload = await response.json().catch(() => ({}));
 
       if (!response.ok || !payload.authenticated || !payload.user) {
-        throw new Error(payload.error || "Account could not be created.");
+        throw new Error(payload.error || (accountAuthMode === "signin" ? "Could not sign in." : "Account could not be created."));
       }
 
       completeAuthenticatedProfile(payload.user, "vireli-account");
@@ -7292,7 +7596,7 @@ function App() {
       setAccountPasswordConfirm("");
       setAccountError("");
     } catch (error) {
-      setAccountError(error.message || "Account could not be created.");
+      setAccountError(error.message || (accountAuthMode === "signin" ? "Could not sign in." : "Account could not be created."));
     } finally {
       setAccountStatus("idle");
     }
@@ -7314,7 +7618,7 @@ function App() {
       routineSetupSkipped: profile.routineSetupSkipped,
       primaryUse: profile.primaryUse,
       setupComplete: Boolean(profile.setupComplete),
-      setupStep: profile.setupComplete ? 3 : Math.max(1, Math.min(3, Number(profile.setupStep || 1))),
+      setupStep: profile.setupComplete ? 2 : Math.max(1, Math.min(2, Number(profile.setupStep || 1))),
       timezone: profile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
       schedulingPreferences: {
         ...EMPTY_PROFILE.schedulingPreferences,
@@ -7329,8 +7633,9 @@ function App() {
     setProfileDraft(nextDraft);
     setRoutineDraft(getBlankSetupRoutineDraft(routine));
     setProfileStepComplete(true);
-    setLaunchSetupStep(1);
-    setLaunchSetupComplete(false);
+    setMoodCheckInComplete(false);
+    setLaunchSetupStep(nextProfile.setupComplete ? 2 : Math.max(1, Math.min(2, Number(nextProfile.setupStep || 1))));
+    setLaunchSetupComplete(Boolean(nextProfile.setupComplete));
     setAccountStep("username");
     setAccountUsername("");
     setAccountPassword("");
@@ -7577,7 +7882,7 @@ function App() {
       routineSetupSkipped: profile.routineSetupSkipped,
       primaryUse: profile.primaryUse,
       setupComplete: Boolean(profile.setupComplete),
-      setupStep: profile.setupComplete ? 3 : Math.max(1, Math.min(3, Number(profile.setupStep || 1))),
+      setupStep: profile.setupComplete ? 2 : Math.max(1, Math.min(2, Number(profile.setupStep || 1))),
       timezone: profile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
       schedulingPreferences: {
         ...EMPTY_PROFILE.schedulingPreferences,
@@ -7591,8 +7896,9 @@ function App() {
     setProfileDraft({ ...nextProfile, name: "", primaryUse: "" });
     setRoutineDraft(getBlankSetupRoutineDraft(routine));
     setProfileStepComplete(true);
-    setLaunchSetupStep(1);
-    setLaunchSetupComplete(false);
+    setMoodCheckInComplete(false);
+    setLaunchSetupStep(nextProfile.setupComplete ? 2 : Math.max(1, Math.min(2, Number(nextProfile.setupStep || 1))));
+    setLaunchSetupComplete(Boolean(nextProfile.setupComplete));
     setAccountStep("username");
     setAccountUsername("");
     setAccountPassword("");
@@ -7672,7 +7978,7 @@ function App() {
     setRoutineDraft((currentDraft) => ({
       ...currentDraft,
       dailyActivities: [
-        ...(currentDraft.dailyActivities || []),
+        ...((currentDraft.dailyActivities || []).length ? currentDraft.dailyActivities : []),
         {
           id: makeId("routine-activity"),
           name: "",
@@ -7683,7 +7989,7 @@ function App() {
           activityType: profile.primaryUse || profileDraft.primaryUse || "",
           active: true,
         },
-      ].slice(0, 8),
+      ].slice(0, 5),
     }));
   }
 
@@ -7703,13 +8009,13 @@ function App() {
     setRoutineDraft(nextRoutine);
     setRoutineStepComplete(true);
     setLaunchSetupComplete(true);
-    setLaunchSetupStep(3);
+    setLaunchSetupStep(2);
     setActiveTab("home");
     setProfile((currentProfile) => ({
       ...currentProfile,
       routineSetupSkipped: false,
       setupComplete: true,
-      setupStep: 3,
+      setupStep: 2,
       updatedAt: new Date().toISOString(),
     }));
   }
@@ -8227,21 +8533,7 @@ function App() {
     };
   }
 
-  function classifyAskPlannerType(prompt) {
-    const normalizedPrompt = prompt.toLowerCase();
-    const primaryUse = profile.primaryUse || profileDraft.primaryUse || "School";
-    const meetingPattern = /\b(meeting|call|one[- ]?on[- ]?one|standup|sync|client call|staff meeting|project review)\b/;
-    const assignmentPattern = /\b(homework|worksheet|essay|project|study|studying|test|quiz|classwork|assignment|math|science|biology|chemistry|history|social studies|language arts|english)\b/;
-    const personalTaskPattern = /\b(piano|practice|workout|clean|room|chore|errand|laundry|dishes|exercise|run|gym)\b/;
-
-    if (primaryUse === "Work" && meetingPattern.test(normalizedPrompt)) {
-      return "Meeting";
-    }
-
-    if (primaryUse === "School" && assignmentPattern.test(normalizedPrompt) && !personalTaskPattern.test(normalizedPrompt)) {
-      return "Assignment";
-    }
-
+function classifyAskPlannerType(prompt) {
     return "Task";
   }
 
@@ -8776,6 +9068,27 @@ function App() {
     setMessages(entry.messages.length ? entry.messages : buildInitialMessages(moodSelection || "ok"));
   }
 
+  function handleFeedbackSubmit() {
+    const text = feedbackDraft.text.trim();
+    if (!text) {
+      return;
+    }
+
+    writePersistentArray(FEEDBACK_STORAGE_KEY, [
+      {
+        id: makeId("feedback"),
+        area: feedbackDraft.area || "General",
+        text,
+        page: activeTab,
+        appVersion: APP_VERSION,
+        createdAt: new Date().toISOString(),
+      },
+      ...loadFeedbackEntries(),
+    ].slice(0, 40));
+    setFeedbackSubmitted(true);
+    setFeedbackDraft(EMPTY_FEEDBACK_DRAFT);
+  }
+
   function handleThoughtAdd(event) {
     event?.preventDefault?.();
     const text = thoughtDraft.trim();
@@ -8918,13 +9231,17 @@ function App() {
           ? html`
                 <${AccountScreen}
                   key="account"
+                  profile=${profile}
                   accountStep=${accountStep}
+                  accountAuthMode=${accountAuthMode}
                   accountUsername=${accountUsername}
                   accountPassword=${accountPassword}
                   accountPasswordConfirm=${accountPasswordConfirm}
                   accountPasswordVisible=${accountPasswordVisible}
                   accountStatus=${accountStatus}
                   accountError=${accountError}
+                  onContinueToVireli=${handleContinueToVireli}
+                  onAccountAuthModeChange=${handleAccountAuthModeChange}
                   onAccountUsernameChange=${handleAccountUsernameChange}
                   onAccountUsernameContinue=${handleAccountUsernameContinue}
                   onAccountBack=${handleAccountBack}
@@ -8941,6 +9258,14 @@ function App() {
                   onContinueAsGuest=${handleContinueAsGuest}
                 />
               `
+          : !moodCheckInComplete
+            ? html`
+                <${LaunchCheckInScreen}
+                  key="launch-check-in"
+                  moodSelection=${moodSelection}
+                  onMoodSelect=${handleMoodSelect}
+                />
+              `
           : !launchSetupComplete && currentSetupStep === 1
             ? html`
                 <${SetupAboutScreen}
@@ -8951,15 +9276,6 @@ function App() {
                 />
               `
           : !launchSetupComplete && currentSetupStep === 2
-            ? html`
-                <${SetupModeScreen}
-                  key="setup-mode"
-                  profileDraft=${profileDraft}
-                  onProfileDraftChange=${handleProfileDraftChange}
-                  onContinue=${handleSetupModeContinue}
-                />
-              `
-          : !launchSetupComplete && currentSetupStep === 3
             ? html`
                 <${SetupScheduleBasicsScreen}
                   key="setup-schedule"
@@ -8977,6 +9293,8 @@ function App() {
                   moodSelection=${moodSelection}
                   moodInfo=${moodInfo}
                   moodNote=${moodNote}
+                  feedbackDraft=${feedbackDraft}
+                  feedbackSubmitted=${feedbackSubmitted}
                   chatDraft=${chatDraft}
                   messages=${messages}
                   recentAskHistory=${recentAskHistory}
@@ -9040,6 +9358,21 @@ function App() {
                   onChatDraftChange=${setChatDraft}
                   onChatSubmit=${handleChatSubmit}
                   onChatRetry=${handleChatRetry}
+                  onFeedbackChange=${(value) => {
+                    setFeedbackDraft((currentDraft) => ({
+                      ...currentDraft,
+                      text: value,
+                    }));
+                    setFeedbackSubmitted(false);
+                  }}
+                  onFeedbackAreaChange=${(value) => {
+                    setFeedbackDraft((currentDraft) => ({
+                      ...currentDraft,
+                      area: value,
+                    }));
+                    setFeedbackSubmitted(false);
+                  }}
+                  onFeedbackSubmit=${handleFeedbackSubmit}
                   onThoughtDraftChange=${setThoughtDraft}
                   onThoughtAdd=${handleThoughtAdd}
                   onThoughtUpdate=${handleThoughtUpdate}

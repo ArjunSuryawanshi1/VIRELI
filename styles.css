@@ -5422,6 +5422,10 @@ summary:focus-visible {
 }
 
 /* Day 20: sidebar-first planner shell */
+.sidebar-scrim {
+  display: none;
+}
+
 .app-topbar {
   position: sticky;
   top: 1rem;
@@ -5471,8 +5475,16 @@ summary:focus-visible {
   gap: clamp(1rem, 2vw, 1.35rem);
 }
 
+.dashboard-layout.has-sidebar.is-sidebar-closed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .dashboard-layout.has-sidebar.is-sidebar-collapsed {
   grid-template-columns: 5.75rem minmax(0, 1fr);
+}
+
+.dashboard-layout.has-sidebar.is-sidebar-closed .app-sidebar {
+  display: none;
 }
 
 .app-sidebar {
@@ -5548,7 +5560,25 @@ summary:focus-visible {
 }
 
 .calendar-view-only-grid {
-  display: block;
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(18rem, 0.7fr);
+  gap: clamp(1rem, 2vw, 1.25rem);
+}
+
+.selected-day-panel {
+  align-self: start;
+  min-width: 0;
+}
+
+.compact-day-flow {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(var(--accent-rgb), 0.1);
+}
+
+.compact-day-flow h4 {
+  margin: 0 0 0.75rem;
+  color: var(--text-main);
 }
 
 .check-in-card {
@@ -5619,6 +5649,7 @@ summary:focus-visible {
   }
 
   .sidebar-scrim {
+    display: block;
     position: fixed;
     inset: 0;
     z-index: 55;
@@ -5636,6 +5667,10 @@ summary:focus-visible {
 
   .content-panel {
     min-width: 0;
+  }
+
+  .calendar-view-only-grid {
+    grid-template-columns: 1fr;
   }
 }
 
