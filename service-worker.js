@@ -1,9 +1,9 @@
-const VIRELI_CACHE = "vireli-day21-unified-tasks-calendar-routine-shell-v1";
+const VIRELI_CACHE = "vireli-day22-routine-first-sidebar-shell-v1";
 const VIRELI_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=day21-unified-tasks-calendar-routine-20260905",
-  "./script.js?v=day21-unified-tasks-calendar-routine-20260905",
+  "./styles.css?v=day22-routine-first-sidebar-20260906",
+  "./script.js?v=day22-routine-first-sidebar-20260906",
   "./manifest.webmanifest",
   "./icons/vireli-icon.svg",
 ];

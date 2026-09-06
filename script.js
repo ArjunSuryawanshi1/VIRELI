@@ -4,10 +4,10 @@ const html = htm.bind(React.createElement);
 
 const NAV_ITEMS = [
   { id: "home", label: "Home" },
-  { id: "tasks", label: "Tasks" },
-  { id: "ask", label: "Ask VIRELI" },
-  { id: "calendar", label: "Calendar" },
   { id: "routine", label: "Your Routine" },
+  { id: "tasks", label: "Tasks" },
+  { id: "calendar", label: "Calendar" },
+  { id: "ask", label: "Ask VIRELI" },
   { id: "improve", label: "How We Can Improve" },
   { id: "settings", label: "Settings" },
 ];
@@ -177,7 +177,7 @@ function getBlankSetupRoutineDraft(baseRoutine = EMPTY_ROUTINE_DRAFT) {
   };
 }
 
-const APP_VERSION = "day21-unified-tasks-calendar-routine-20260905";
+const APP_VERSION = "day22-routine-first-sidebar-20260906";
 const INTRO_ANIMATION_SECONDS = 1.35;
 const INTRO_SCREEN_DURATION_MS = 3200;
 const THEME_TRANSITION_DURATION_MS = 2000;
@@ -858,6 +858,12 @@ function getArchivedAskHistory(entries) {
 
 function loadFeedbackEntries() {
   return readPersistentArray(FEEDBACK_STORAGE_KEY).slice(0, 40);
+}
+
+function hasSavedRoutine(routine = EMPTY_ROUTINE_DRAFT) {
+  return Array.isArray(routine.dailyActivities) && routine.dailyActivities.some((activity) =>
+    String(activity?.name || "").trim(),
+  );
 }
 
 function getClassLabel(classes, classId, fallback = "Class") {
@@ -4273,8 +4279,10 @@ function AccountScreen({
   const canCreateAccount = accountAuthMode === "signin"
     ? Boolean(accountUsername.trim() && accountPassword && !isBusy)
     : Boolean(accountUsername.trim() && accountPassword && accountPasswordConfirm && !isBusy);
+  const isChoiceStep = accountStep === "choice";
+  const isUsernameStep = accountStep === "username";
   const isPasswordStep = accountStep === "password";
-  const hasFastEntry = Boolean(profile?.setupComplete && (profile.connected || profile.guest || profile.name));
+  const accountActionLabel = accountAuthMode === "signin" ? "Sign In" : "Sign Up";
 
   return html`
     <${motion.section}
@@ -4296,23 +4304,22 @@ function AccountScreen({
               <${VireliLogoMark} animated=${true} />
             </div>
             <p className="google-auth-brand font-display">VIRELI</p>
-            <h2 className="font-display">${isPasswordStep ? (accountAuthMode === "signin" ? "Enter your password" : "Create your password") : "VIRELI Account"}</h2>
-            <p>${isPasswordStep ? `${accountAuthMode === "signin" ? "Sign in as" : "Finish creating"} ${accountUsername || "your account"}.` : "Enter with your VIRELI account, or continue quickly if this device is already set up."}</p>
+            <h2 className="font-display">${isPasswordStep ? (accountAuthMode === "signin" ? "Enter your password" : "Create your password") : isUsernameStep ? `${accountActionLabel} to VIRELI` : "VIRELI Account"}</h2>
           </div>
 
-          ${!isPasswordStep
+          ${isChoiceStep
             ? html`
-                ${hasFastEntry
-                  ? html`
-                      <button type="button" className="primary-button auth-primary-button get-started-button" onClick=${onContinueToVireli}>
-                        Continue to VIRELI
-                      </button>
-                    `
-                  : null}
-                <div className="account-mode-toggle" role="group" aria-label="Account action">
-                  <button type="button" className=${cx("choice-chip", accountAuthMode === "signin" && "is-selected")} onClick=${() => onAccountAuthModeChange("signin")}>Sign in</button>
-                  <button type="button" className=${cx("choice-chip", accountAuthMode === "create" && "is-selected")} onClick=${() => onAccountAuthModeChange("create")}>Create account</button>
+                <div className="account-choice-actions">
+                  <button type="button" className="primary-button auth-primary-button get-started-button" onClick=${() => onAccountAuthModeChange("create")}>
+                    Sign Up
+                  </button>
+                  <button type="button" className="secondary-button auth-primary-button get-started-button" onClick=${() => onAccountAuthModeChange("signin")}>
+                    Sign In
+                  </button>
                 </div>
+              `
+            : isUsernameStep
+            ? html`
                 <form className="vireli-account-form" onSubmit=${onAccountUsernameContinue}>
                   <label className="field-stack">
                     <span>Username</span>
@@ -4321,19 +4328,24 @@ function AccountScreen({
                       type="text"
                       value=${accountUsername}
                       onInput=${(event) => onAccountUsernameChange(event.target.value)}
-                      placeholder="Choose a username"
+                      placeholder=${accountAuthMode === "signin" ? "Enter your username" : "Choose a username"}
                       autoComplete="username"
-                    disabled=${isBusy}
+                      disabled=${isBusy}
                     />
                   </label>
                   ${accountError ? html`<p className="auth-inline-error">${accountError}</p>` : null}
-                  <button
-                    type="submit"
-                    className="primary-button auth-primary-button get-started-button"
-                    disabled=${!canContinueUsername || isCheckingUsername}
-                  >
-                    ${isCheckingUsername ? "Checking..." : "Continue"}
-                  </button>
+                  <div className="account-step-actions">
+                    <button type="button" className="secondary-button" onClick=${onAccountBack} disabled=${isBusy}>
+                      Back
+                    </button>
+                    <button
+                      type="submit"
+                      className="primary-button auth-primary-button get-started-button"
+                      disabled=${!canContinueUsername || isCheckingUsername}
+                    >
+                      ${isCheckingUsername ? "Checking..." : "Continue"}
+                    </button>
+                  </div>
                 </form>
               `
             : html`
@@ -4350,9 +4362,9 @@ function AccountScreen({
                   type=${accountPasswordVisible ? "text" : "password"}
                   value=${accountPassword}
                   onInput=${(event) => onAccountPasswordChange(event.target.value)}
-                  placeholder="Create password"
-                  autoComplete="new-password"
-                  disabled=${isCreatingAccount}
+                  placeholder=${accountAuthMode === "signin" ? "Password" : "Create password"}
+                  autoComplete=${accountAuthMode === "signin" ? "current-password" : "new-password"}
+                  disabled=${isBusy}
                 />
                 <button
                   type="button"
@@ -4376,7 +4388,7 @@ function AccountScreen({
                               onInput=${(event) => onAccountPasswordConfirmChange(event.target.value)}
                               placeholder="Confirm password"
                               autoComplete="new-password"
-                              disabled=${isCreatingAccount}
+                              disabled=${isBusy}
                             />
                             <button
                               type="button"
@@ -4392,7 +4404,7 @@ function AccountScreen({
                     : null}
                   ${accountError ? html`<p className="auth-inline-error">${accountError}</p>` : null}
                   <div className="account-step-actions">
-                    <button type="button" className="secondary-button" onClick=${onAccountBack} disabled=${isCreatingAccount}>
+                    <button type="button" className="secondary-button" onClick=${onAccountBack} disabled=${isBusy}>
                       Back
                     </button>
                     <button
@@ -4406,15 +4418,15 @@ function AccountScreen({
                 </form>
               `}
 
-          <div className="vireli-account-secondary">
-            <button type="button" className="text-link-button account-guest-button" onClick=${onContinueAsGuest} disabled=${isCreatingAccount}>
-              Continue as guest
-            </button>
-          </div>
-
-          <p className="account-privacy-note">
-            VIRELI stores your username and a secure password hash, never your readable password.
-          </p>
+          ${!isChoiceStep
+            ? html`
+                <div className="vireli-account-secondary">
+                  <button type="button" className="text-link-button account-guest-button" onClick=${onContinueAsGuest} disabled=${isBusy}>
+                    Continue as guest
+                  </button>
+                </div>
+              `
+            : null}
         </${motion.div}>
       </div>
     </${motion.section}>
@@ -4454,7 +4466,7 @@ function RoutineTab({
         <div>
           <p className="eyebrow">Your Routine</p>
           <h1 className="font-display">What do you want to do every day?</h1>
-          <p className="tab-heading-lead">Add up to five recurring activities. VIRELI uses them when planning your day.</p>
+          <p className="tab-heading-lead">Add up to five normal daily activities. VIRELI uses them when planning your day.</p>
         </div>
         <span className="date-chip">${savedRoutineCount} / 5 routines</span>
       </div>
@@ -4465,12 +4477,12 @@ function RoutineTab({
             (activity, index) => html`
               <div key=${activity.id || `routine-${index}`} className="routine-daily-row">
                 <label className="field-stack routine-name-field">
-                  <span>${index === 0 ? "What do you want to do every day?" : "Routine activity"}</span>
+                  <span>${index === 0 ? "What do you normally do?" : "Routine activity"}</span>
                   <input
                     className="planning-input"
                     value=${activity.name}
                     onInput=${(event) => onRoutineActivityChange(index, "name", event.target.value)}
-                    placeholder="Piano practice"
+                    placeholder="School, piano, workout, reading..."
                   />
                 </label>
                 ${String(activity.name || "").trim()
@@ -4486,6 +4498,25 @@ function RoutineTab({
                           ${[5, 10, 15, 20, 30, 45, 60].map(
                             (minutes) => html`<option key=${minutes} value=${String(minutes)}>${formatDurationFromMinutes(minutes)}</option>`,
                           )}
+                        </select>
+                      </label>
+                      <label className="field-stack routine-time-field">
+                        <span>About what time?</span>
+                        <input
+                          className="planning-input"
+                          type="time"
+                          value=${activity.usualTime}
+                          onInput=${(event) => onRoutineActivityChange(index, "usualTime", event.target.value)}
+                        />
+                      </label>
+                      <label className="field-stack routine-days-field">
+                        <span>Days</span>
+                        <select
+                          className="planning-input"
+                          value=${activity.days || "Every day"}
+                          onChange=${(event) => onRoutineActivityChange(index, "days", event.target.value)}
+                        >
+                          ${ROUTINE_DAY_OPTIONS.map((option) => html`<option key=${option} value=${option}>${option}</option>`)}
                         </select>
                       </label>
                       <button
@@ -4882,7 +4913,10 @@ function HomeTab({
     .slice()
     .sort((a, b) => `${a.scheduledDate || a.dueDate || "9999-12-31"} ${a.scheduledTime || ""}`.localeCompare(`${b.scheduledDate || b.dueDate || "9999-12-31"} ${b.scheduledTime || ""}`));
   const nextTask = sortedTasks[0];
-  const todaySchedule = getChronologicalDayItems({ routine, homeworkItems: [], calendarTasks, savedClasses }).slice(0, 8);
+  const routineReady = hasSavedRoutine(routine);
+  const todaySchedule = getChronologicalDayItems({ routine, homeworkItems: [], calendarTasks, savedClasses })
+    .filter((item) => item.source !== "free")
+    .slice(0, 8);
   const completedToday = calendarTasks.filter((item) => item.completed && isDueToday(item, getDateInputValue())).length;
 
   return html`
@@ -4904,7 +4938,15 @@ function HomeTab({
       <div className="home-grid planner-dashboard-grid home-simple-grid">
         <article className="feature-card next-task-card">
           <p className="eyebrow">Recommended now</p>
-          ${nextTask
+          ${!routineReady
+            ? html`
+                <h2 className="font-display">Set up your routine first</h2>
+                <p>VIRELI needs your normal daily routine before it can properly organize your day.</p>
+                <div className="card-footer-row">
+                  <button type="button" className="primary-button" onClick=${() => onTabChange("routine")}>Set Up My Routine</button>
+                </div>
+              `
+            : nextTask
             ? html`
                 <div className="next-task-main">
                   <div>
@@ -4950,7 +4992,14 @@ function HomeTab({
 
         <article className="feature-card feature-card-quote-wide">
           <h3 className="font-display">Today’s schedule</h3>
-          ${todaySchedule.length
+          ${!routineReady
+            ? html`
+                <p>VIRELI needs your routine first before it can show a useful daily schedule.</p>
+                <div className="card-footer-row">
+                  <button type="button" className="secondary-button" onClick=${() => onTabChange("routine")}>Open Your Routine</button>
+                </div>
+              `
+            : todaySchedule.length
             ? html`
                 <div className="selected-day-list">
                   ${todaySchedule.map(
@@ -5939,7 +5988,7 @@ function CalendarTab({
       ...item,
       calendarId: `homework:${item.id}`,
       source: "homework",
-      sourceLabel: "Assignment",
+      sourceLabel: "Task",
       subject: item.classLabel || (item.classId ? getClassLabel(savedClasses, item.classId, "") : item.type || "Plan"),
       calendarDate: item.dueDate || item.scheduledDate || "",
       scheduledDate: item.scheduledDate || "",
@@ -5960,6 +6009,9 @@ function CalendarTab({
   const selectedDateValue = selectedDate || today;
   const selectedDayItems = visibleCalendarItems.filter((item) => item.calendarDate === selectedDateValue);
   const chronologicalDayItems = getChronologicalDayItems({ routine, homeworkItems, calendarTasks, dateValue: selectedDateValue, savedClasses });
+  const todaySummaryItems = getChronologicalDayItems({ routine, homeworkItems, calendarTasks, dateValue: today, savedClasses })
+    .filter((item) => item.source !== "free")
+    .slice(0, 6);
 
   return html`
     <${motion.section}
@@ -5987,6 +6039,28 @@ function CalendarTab({
           </button>
         </div>
       </div>
+
+      <article className="feature-card calendar-today-summary-card">
+        <div className="card-topline card-topline-simple">
+          <span className="mood-chip">Today</span>
+        </div>
+        ${todaySummaryItems.length
+          ? html`
+              <div className="calendar-today-list">
+                ${todaySummaryItems.map(
+                  (item) => html`
+                    <div key=${`calendar-today-${item.id}`} className=${cx("selected-day-item", `is-${item.source}`)}>
+                      <div>
+                        <strong>${item.title}</strong>
+                        <span>${item.timeLabel}</span>
+                      </div>
+                    </div>
+                  `,
+                )}
+              </div>
+            `
+          : html`<p>Nothing is currently planned for today.</p>`}
+      </article>
 
       <div className="calendar-grid calendar-view-only-grid">
         <article className="feature-card feature-card-quote-wide month-calendar-card">
@@ -6849,15 +6923,18 @@ function DashboardShell({
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-[1480px] flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
         ${!sidebarOpen
           ? html`
-          <button
-            type="button"
-            className="sidebar-toggle-button sidebar-floating-button"
-            aria-label="Open navigation menu"
-            aria-expanded=${sidebarOpen}
-            onClick=${() => setSidebarOpen(true)}
-          >
-            ☰
-          </button>
+          <div className="sidebar-corner-launch">
+            <${VireliLogoMark} className="brand-mark" />
+            <button
+              type="button"
+              className="sidebar-toggle-button sidebar-floating-button"
+              aria-label="Open navigation menu"
+              aria-expanded=${sidebarOpen}
+              onClick=${() => setSidebarOpen(true)}
+            >
+              ☰
+            </button>
+          </div>
         `
           : null}
 
@@ -6873,11 +6950,17 @@ function DashboardShell({
                   <${VireliLogoMark} className="brand-mark" />
                   <span className="font-display">VIRELI</span>
                 </div>
-                <p className="eyebrow">Navigation</p>
+                <button
+                  type="button"
+                  className="sidebar-toggle-button sidebar-menu-under-logo"
+                  aria-label="Close navigation menu"
+                  aria-expanded=${sidebarOpen}
+                  onClick=${() => setSidebarOpen(false)}
+                >
+                  ☰
+                </button>
               </div>
               <div className="sidebar-head-actions">
-                <button type="button" className="sidebar-icon-button is-mobile-only" aria-label="Close navigation" onClick=${() => setSidebarOpen(false)}>Close</button>
-                <button type="button" className="sidebar-icon-button is-desktop-only" aria-label="Close navigation" onClick=${() => setSidebarOpen(false)}>Close</button>
                 <button
                   type="button"
                   className="sidebar-icon-button is-desktop-only"
@@ -6942,7 +7025,7 @@ function App() {
   const [askHistory, setAskHistory] = useState(loadAskHistory);
   const [profile, setProfile] = useState(loadProfile);
   const [profileDraft, setProfileDraft] = useState(() => loadProfile());
-  const [accountStep, setAccountStep] = useState("username");
+  const [accountStep, setAccountStep] = useState("choice");
   const [accountAuthMode, setAccountAuthMode] = useState("signin");
   const [accountUsername, setAccountUsername] = useState("");
   const [accountPassword, setAccountPassword] = useState("");
@@ -7319,7 +7402,9 @@ function App() {
 
   function handleAccountAuthModeChange(mode) {
     setAccountAuthMode(mode);
+    setAccountStep("username");
     setAccountError("");
+    setAccountUsername("");
     setAccountPassword("");
     setAccountPasswordConfirm("");
   }
@@ -7373,7 +7458,9 @@ function App() {
 
   function handleAccountBack() {
     setAccountError("");
-    setAccountStep("username");
+    setAccountPassword("");
+    setAccountPasswordConfirm("");
+    setAccountStep(accountStep === "password" ? "username" : "choice");
   }
 
   function handlePasswordDraftChange(field, value) {
@@ -7590,7 +7677,7 @@ function App() {
       }
 
       completeAuthenticatedProfile(payload.user, "vireli-account");
-      setAccountStep("username");
+      setAccountStep("choice");
       setAccountUsername("");
       setAccountPassword("");
       setAccountPasswordConfirm("");
@@ -7636,7 +7723,7 @@ function App() {
     setMoodCheckInComplete(false);
     setLaunchSetupStep(nextProfile.setupComplete ? 2 : Math.max(1, Math.min(2, Number(nextProfile.setupStep || 1))));
     setLaunchSetupComplete(Boolean(nextProfile.setupComplete));
-    setAccountStep("username");
+    setAccountStep("choice");
     setAccountUsername("");
     setAccountPassword("");
     setAccountPasswordConfirm("");
@@ -7899,7 +7986,7 @@ function App() {
     setMoodCheckInComplete(false);
     setLaunchSetupStep(nextProfile.setupComplete ? 2 : Math.max(1, Math.min(2, Number(nextProfile.setupStep || 1))));
     setLaunchSetupComplete(Boolean(nextProfile.setupComplete));
-    setAccountStep("username");
+    setAccountStep("choice");
     setAccountUsername("");
     setAccountPassword("");
     setAccountPasswordConfirm("");
