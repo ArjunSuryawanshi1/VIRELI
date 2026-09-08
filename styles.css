@@ -5505,15 +5505,7 @@ summary:focus-visible {
 }
 
 .dashboard-layout.has-sidebar.is-sidebar-closed {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.dashboard-layout.has-sidebar.is-sidebar-collapsed {
-  grid-template-columns: 5.75rem minmax(0, 1fr);
-}
-
-.dashboard-layout.has-sidebar.is-sidebar-closed .app-sidebar {
-  display: none;
+  grid-template-columns: 5.65rem minmax(0, 1fr);
 }
 
 .app-sidebar {
@@ -5537,6 +5529,7 @@ summary:focus-visible {
 .sidebar-logo-lockup {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.65rem;
 }
 
@@ -5546,7 +5539,7 @@ summary:focus-visible {
 }
 
 .sidebar-menu-under-logo {
-  margin-top: 0.65rem;
+  margin-top: 0.35rem;
   width: 46px;
   padding-inline: 0;
   justify-content: center;
@@ -5573,8 +5566,6 @@ summary:focus-visible {
   padding-inline: 0.65rem;
 }
 
-.app-sidebar.is-collapsed .sidebar-head h2,
-.app-sidebar.is-collapsed .sidebar-head .eyebrow,
 .app-sidebar.is-collapsed .is-desktop-only {
   display: none;
 }
@@ -5647,6 +5638,16 @@ summary:focus-visible {
   padding: 0.85rem 1rem;
 }
 
+.launch-check-in-panel .mood-heading h2 {
+  line-height: 1.08;
+  word-spacing: 0.08em;
+}
+
+.account-guest-choice {
+  border-color: rgba(var(--accent-deep-rgb), 0.2);
+  color: var(--red-deep);
+}
+
 @media (max-width: 900px) {
   .app-topbar {
     top: 0.65rem;
@@ -5665,7 +5666,7 @@ summary:focus-visible {
   }
 
   .dashboard-layout.has-sidebar,
-  .dashboard-layout.has-sidebar.is-sidebar-collapsed {
+  .dashboard-layout.has-sidebar.is-sidebar-closed {
     display: block;
   }
 
@@ -5675,34 +5676,41 @@ summary:focus-visible {
     transition: transform 220ms ease, filter 220ms ease;
   }
 
+  .dashboard-layout.has-sidebar.is-sidebar-closed .content-panel {
+    margin-left: 4.45rem;
+  }
+
   .app-sidebar,
   .app-sidebar.is-collapsed {
     position: fixed;
     inset: 0 auto 0 0;
     z-index: 60;
-    width: min(86vw, 21rem);
     min-height: 100vh;
     border-radius: 0 1.35rem 1.35rem 0;
-    transform: translateX(-110%);
   }
 
-  .app-sidebar.is-open {
+  .app-sidebar.is-collapsed {
+    width: 4.9rem;
     transform: translateX(0);
   }
 
-  .app-sidebar.is-collapsed .sidebar-head h2,
-  .app-sidebar.is-collapsed .sidebar-head .eyebrow,
+  .app-sidebar.is-open {
+    width: min(86vw, 21rem);
+    transform: translateX(0);
+  }
+
   .app-sidebar.is-collapsed .is-desktop-only {
-    display: block;
+    display: none;
   }
 
   .app-sidebar.is-collapsed .nav-button {
-    justify-content: flex-start;
-    padding-inline: 1rem;
+    justify-content: center;
+    min-width: 44px;
+    padding-inline: 0.55rem;
   }
 
   .app-sidebar.is-collapsed .nav-label {
-    max-width: none;
+    max-width: 2.2rem;
   }
 
   .sidebar-scrim {

@@ -5,7 +5,6 @@ const html = htm.bind(React.createElement);
 const NAV_ITEMS = [
   { id: "home", label: "Home" },
   { id: "routine", label: "Your Routine" },
-  { id: "tasks", label: "Tasks" },
   { id: "calendar", label: "Calendar" },
   { id: "ask", label: "Ask VIRELI" },
   { id: "improve", label: "How We Can Improve" },
@@ -177,7 +176,7 @@ function getBlankSetupRoutineDraft(baseRoutine = EMPTY_ROUTINE_DRAFT) {
   };
 }
 
-const APP_VERSION = "day22-routine-first-sidebar-20260906";
+const APP_VERSION = "day23-sidebar-routine-cleanup-20260907";
 const INTRO_ANIMATION_SECONDS = 1.35;
 const INTRO_SCREEN_DURATION_MS = 3200;
 const THEME_TRANSITION_DURATION_MS = 2000;
@@ -4111,7 +4110,7 @@ function CheckInTab({ moodSelection, onMoodSelect }) {
       initial=${{ opacity: 0, y: 20 }}
       animate=${{ opacity: 1, y: 0 }}
       exit=${{ opacity: 0, y: -16 }}
-      transition=${{ duration: 0.35 }}
+      transition=${{ duration: 0.25 }}
     >
       <div className="tab-heading check-in-heading">
         <div>
@@ -4309,15 +4308,18 @@ function AccountScreen({
 
           ${isChoiceStep
             ? html`
-                <div className="account-choice-actions">
-                  <button type="button" className="primary-button auth-primary-button get-started-button" onClick=${() => onAccountAuthModeChange("create")}>
-                    Sign Up
-                  </button>
-                  <button type="button" className="secondary-button auth-primary-button get-started-button" onClick=${() => onAccountAuthModeChange("signin")}>
-                    Sign In
-                  </button>
-                </div>
-              `
+              <div className="account-choice-actions">
+                <button type="button" className="primary-button auth-primary-button get-started-button" onClick=${() => onAccountAuthModeChange("create")}>
+                  Sign Up
+                </button>
+                <button type="button" className="secondary-button auth-primary-button get-started-button" onClick=${() => onAccountAuthModeChange("signin")}>
+                  Sign In
+                </button>
+                <button type="button" className="secondary-button auth-primary-button get-started-button account-guest-choice" onClick=${onContinueAsGuest} disabled=${isBusy}>
+                  Continue as Guest
+                </button>
+              </div>
+            `
             : isUsernameStep
             ? html`
                 <form className="vireli-account-form" onSubmit=${onAccountUsernameContinue}>
@@ -4449,9 +4451,9 @@ function RoutineTab({
   const visibleActivities = (Array.isArray(routineDraft.dailyActivities) && routineDraft.dailyActivities.length
     ? routineDraft.dailyActivities
     : [{ id: "routine-draft-first", name: "", durationMinutes: "", usualTime: "", days: "Every day", fixed: false }]
-  ).slice(0, 5);
+  ).slice(0, 2);
   const savedRoutineCount = visibleActivities.filter((activity) => String(activity.name || "").trim()).length;
-  const canAddRoutine = visibleActivities.length < 5 && visibleActivities.every((activity) => String(activity.name || "").trim() && String(activity.durationMinutes || "").trim());
+  const canAddRoutine = visibleActivities.length < 2 && savedRoutineCount >= 1 && visibleActivities.every((activity) => String(activity.name || "").trim());
 
   return html`
     <${motion.section}
@@ -4460,15 +4462,15 @@ function RoutineTab({
       initial=${{ opacity: 0, y: 20 }}
       animate=${{ opacity: 1, y: 0 }}
       exit=${{ opacity: 0, y: -16 }}
-      transition=${{ duration: 0.35 }}
+      transition=${{ duration: 0.25 }}
     >
       <div className="tab-heading">
         <div>
           <p className="eyebrow">Your Routine</p>
           <h1 className="font-display">What do you want to do every day?</h1>
-          <p className="tab-heading-lead">Add up to five normal daily activities. VIRELI uses them when planning your day.</p>
+          <p className="tab-heading-lead">Choose one or two daily activities you can realistically keep doing. VIRELI uses them when planning your day.</p>
         </div>
-        <span className="date-chip">${savedRoutineCount} / 5 routines</span>
+        <span className="date-chip">${savedRoutineCount} / 2 routines</span>
       </div>
 
       <article className="feature-card routine-simple-card">
@@ -4535,14 +4537,14 @@ function RoutineTab({
         </div>
         <div className="card-footer-row">
           <button type="button" className="secondary-button" onClick=${onRoutineActivityAdd} disabled=${!canAddRoutine}>
-            + Add Another
+            Add second activity
           </button>
           <button type="button" className="primary-button" onClick=${onSaveRoutine}>
             Save routine
           </button>
         </div>
-        ${visibleActivities.length >= 5
-          ? html`<p className="soft-note-inline">You can keep up to five daily routines.</p>`
+        ${visibleActivities.length >= 2
+          ? html`<p className="soft-note-inline">VIRELI keeps daily routines to two activities so the plan stays realistic.</p>`
           : null}
       </article>
     </${motion.section}>
@@ -4666,12 +4668,12 @@ function RoutineTab({
       initial=${{ opacity: 0, y: 20 }}
       animate=${{ opacity: 1, y: 0 }}
       exit=${{ opacity: 0, y: -16 }}
-      transition=${{ duration: 0.35 }}
+      transition=${{ duration: 0.25 }}
     >
       <div className="tab-heading">
         <div>
           <p className="eyebrow">Your Routine</p>
-          <h1 className="font-display">Organize Tasks</h1>
+          <h1 className="font-display">Build Your Routine</h1>
           <p className="tab-heading-lead">VIRELI reviews your recurring commitments before it moves anything.</p>
         </div>
       </div>
@@ -4926,7 +4928,7 @@ function HomeTab({
       initial=${{ opacity: 0, y: 20 }}
       animate=${{ opacity: 1, y: 0 }}
       exit=${{ opacity: 0, y: -16 }}
-      transition=${{ duration: 0.35 }}
+      transition=${{ duration: 0.25 }}
     >
       <div className="tab-heading home-heading">
         <div>
@@ -4958,14 +4960,14 @@ function HomeTab({
                 <div className="card-footer-row next-task-actions">
                   <button type="button" className="primary-button" onClick=${() => onTabChange("calendar")}>View schedule</button>
                   <button type="button" className="secondary-button" onClick=${() => onCalendarTaskToggle?.(nextTask.id)}>Done</button>
-                  <button type="button" className="secondary-button" onClick=${() => onTabChange("tasks")}>Move</button>
+                  <button type="button" className="secondary-button" onClick=${() => onTabChange("ask")}>Move</button>
                 </div>
               `
             : html`
                 <h2 className="font-display">No tasks yet.</h2>
-                <p>Add something in Tasks or Ask VIRELI what to plan.</p>
+                <p>Ask VIRELI to add something when you are ready to plan it.</p>
                 <div className="card-footer-row">
-                  <button type="button" className="primary-button" onClick=${() => onTabChange("tasks")}>Add a task</button>
+                  <button type="button" className="primary-button" onClick=${() => onTabChange("ask")}>Ask VIRELI</button>
                 </div>
               `}
         </article>
@@ -5061,7 +5063,7 @@ function HomeTab({
       initial=${{ opacity: 0, y: 20 }}
       animate=${{ opacity: 1, y: 0 }}
       exit=${{ opacity: 0, y: -16 }}
-      transition=${{ duration: 0.35 }}
+      transition=${{ duration: 0.25 }}
     >
       <div className="tab-heading home-heading">
         <div>
@@ -5321,7 +5323,7 @@ function EmptyPlannerPage({ pageTitle }) {
       initial=${{ opacity: 0, y: 20 }}
       animate=${{ opacity: 1, y: 0 }}
       exit=${{ opacity: 0, y: -16 }}
-      transition=${{ duration: 0.35 }}
+      transition=${{ duration: 0.25 }}
     >
       <div className="empty-page-shell" aria-hidden="true"></div>
     </${motion.section}>
@@ -5424,7 +5426,7 @@ function PlanTodayTab({
       initial=${{ opacity: 0, y: 20 }}
       animate=${{ opacity: 1, y: 0 }}
       exit=${{ opacity: 0, y: -16 }}
-      transition=${{ duration: 0.35 }}
+      transition=${{ duration: 0.25 }}
     >
       <div className="tab-heading">
         <div>
@@ -5631,7 +5633,7 @@ function ModeItemsTab({
       initial=${{ opacity: 0, y: 20 }}
       animate=${{ opacity: 1, y: 0 }}
       exit=${{ opacity: 0, y: -16 }}
-      transition=${{ duration: 0.35 }}
+      transition=${{ duration: 0.25 }}
     >
       <div className="tab-heading">
         <div>
@@ -5740,7 +5742,7 @@ function ModeItemsTab({
       initial=${{ opacity: 0, y: 20 }}
       animate=${{ opacity: 1, y: 0 }}
       exit=${{ opacity: 0, y: -16 }}
-      transition=${{ duration: 0.35 }}
+      transition=${{ duration: 0.25 }}
     >
       <div className="tab-heading">
         <div>
@@ -6020,7 +6022,7 @@ function CalendarTab({
       initial=${{ opacity: 0, y: 20 }}
       animate=${{ opacity: 1, y: 0 }}
       exit=${{ opacity: 0, y: -16 }}
-      transition=${{ duration: 0.35 }}
+      transition=${{ duration: 0.25 }}
     >
       <div className="tab-heading">
         <div>
@@ -6192,7 +6194,7 @@ function AskVireliTab({
       initial=${{ opacity: 0, y: 20 }}
       animate=${{ opacity: 1, y: 0 }}
       exit=${{ opacity: 0, y: -16 }}
-      transition=${{ duration: 0.35 }}
+      transition=${{ duration: 0.25 }}
     >
       <div className="tab-heading">
         <div>
@@ -6323,7 +6325,7 @@ function ImproveTab({
       initial=${{ opacity: 0, y: 20 }}
       animate=${{ opacity: 1, y: 0 }}
       exit=${{ opacity: 0, y: -16 }}
-      transition=${{ duration: 0.35 }}
+      transition=${{ duration: 0.25 }}
     >
       <div className="tab-heading">
         <div>
@@ -6616,7 +6618,7 @@ function SettingsTab({
       initial=${{ opacity: 0, y: 20 }}
       animate=${{ opacity: 1, y: 0 }}
       exit=${{ opacity: 0, y: -16 }}
-      transition=${{ duration: 0.35 }}
+      transition=${{ duration: 0.25 }}
     >
       <div className="tab-heading">
         <div>
@@ -6749,7 +6751,6 @@ function DashboardShell({
   onSchedulingPreferenceChange,
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(() => loadSidebarState().open);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => loadSidebarState().collapsed);
   let activeView = null;
   const primaryNavItems = getPrimaryNavItems();
   const topSchedule = getTodayScheduleBlocks({ routine, homeworkItems, calendarTasks });
@@ -6759,9 +6760,9 @@ function DashboardShell({
   useEffect(() => {
     writePersistentObject(SIDEBAR_STORAGE_KEY, {
       open: sidebarOpen,
-      collapsed: sidebarCollapsed,
+      collapsed: !sidebarOpen,
     });
-  }, [sidebarOpen, sidebarCollapsed]);
+  }, [sidebarOpen]);
 
   if (activeTab === "home") {
     activeView = html`
@@ -6793,23 +6794,6 @@ function DashboardShell({
         onHomeworkCompleteToggle=${onHomeworkCompleteToggle}
         onHomeworkDelete=${onHomeworkDelete}
         onPlanNotificationDismiss=${onPlanNotificationDismiss}
-      />
-    `;
-  } else if (activeTab === "tasks") {
-    activeView = html`
-      <${ModeItemsTab}
-        mode="Tasks"
-        itemType="Task"
-        calendarTasks=${calendarTasks}
-        calendarTaskDraft=${calendarTaskDraft}
-        editingCalendarTaskId=${editingCalendarTaskId}
-        selectedDate=${selectedCalendarDate}
-        onCalendarTaskDraftChange=${onCalendarTaskDraftChange}
-        onModeItemSubmit=${onModeItemSubmit}
-        onCalendarTaskEdit=${onCalendarTaskEdit}
-        onCalendarTaskCancelEdit=${onCalendarTaskCancelEdit}
-        onCalendarTaskToggle=${onCalendarTaskToggle}
-        onCalendarTaskDelete=${onCalendarTaskDelete}
       />
     `;
   } else if (activeTab === "calendar") {
@@ -6921,53 +6905,25 @@ function DashboardShell({
       <${CircleBackdrop} />
 
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-[1480px] flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
-        ${!sidebarOpen
-          ? html`
-          <div className="sidebar-corner-launch">
-            <${VireliLogoMark} className="brand-mark" />
-            <button
-              type="button"
-              className="sidebar-toggle-button sidebar-floating-button"
-              aria-label="Open navigation menu"
-              aria-expanded=${sidebarOpen}
-              onClick=${() => setSidebarOpen(true)}
-            >
-              ☰
-            </button>
-          </div>
-        `
-          : null}
-
         ${sidebarOpen
           ? html`<button type="button" className="sidebar-scrim" aria-label="Close navigation" onClick=${() => setSidebarOpen(false)}></button>`
           : null}
 
-        <div className=${cx("dashboard-layout has-sidebar", !sidebarOpen && "is-sidebar-closed", sidebarCollapsed && "is-sidebar-collapsed")}>
-          <aside className=${cx("surface-panel sidebar-panel app-sidebar", sidebarOpen && "is-open", sidebarCollapsed && "is-collapsed")}>
+        <div className=${cx("dashboard-layout has-sidebar", !sidebarOpen && "is-sidebar-closed")}>
+          <aside className=${cx("surface-panel sidebar-panel app-sidebar", sidebarOpen && "is-open", !sidebarOpen && "is-collapsed")}>
             <div className="sidebar-head">
               <div>
                 <div className="sidebar-logo-lockup">
                   <${VireliLogoMark} className="brand-mark" />
-                  <span className="font-display">VIRELI</span>
                 </div>
                 <button
                   type="button"
                   className="sidebar-toggle-button sidebar-menu-under-logo"
-                  aria-label="Close navigation menu"
+                  aria-label=${sidebarOpen ? "Close navigation menu" : "Open navigation menu"}
                   aria-expanded=${sidebarOpen}
-                  onClick=${() => setSidebarOpen(false)}
+                  onClick=${() => setSidebarOpen((currentValue) => !currentValue)}
                 >
                   ☰
-                </button>
-              </div>
-              <div className="sidebar-head-actions">
-                <button
-                  type="button"
-                  className="sidebar-icon-button is-desktop-only"
-                  aria-label=${sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
-                  onClick=${() => setSidebarCollapsed((currentValue) => !currentValue)}
-                >
-                  ${sidebarCollapsed ? "Expand" : "Collapse"}
                 </button>
               </div>
             </div>
@@ -6981,9 +6937,6 @@ function DashboardShell({
                     className=${cx("nav-button", activeTab === item.id && "is-active")}
                     onClick=${() => {
                       onTabChange(item.id);
-                      if (typeof window !== "undefined" && window.innerWidth <= 900) {
-                        setSidebarOpen(false);
-                      }
                     }}
                   >
                     <span className="nav-label">${item.label}</span>
@@ -8076,7 +8029,7 @@ function App() {
           activityType: profile.primaryUse || profileDraft.primaryUse || "",
           active: true,
         },
-      ].slice(0, 5),
+      ].slice(0, 2),
     }));
   }
 

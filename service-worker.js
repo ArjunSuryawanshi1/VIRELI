@@ -1,9 +1,9 @@
-const VIRELI_CACHE = "vireli-day22-routine-first-sidebar-shell-v1";
+const VIRELI_CACHE = "vireli-day23-sidebar-routine-cleanup-shell-v1";
 const VIRELI_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=day22-routine-first-sidebar-20260906",
-  "./script.js?v=day22-routine-first-sidebar-20260906",
+  "./styles.css?v=day23-sidebar-routine-cleanup-20260907",
+  "./script.js?v=day23-sidebar-routine-cleanup-20260907",
   "./manifest.webmanifest",
   "./icons/vireli-icon.svg",
 ];
