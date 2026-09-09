@@ -5434,68 +5434,6 @@ summary:focus-visible {
   justify-content: center;
 }
 
-.sidebar-corner-launch {
-  position: fixed;
-  top: max(1rem, env(safe-area-inset-top));
-  left: max(1rem, env(safe-area-inset-left));
-  z-index: 45;
-  display: grid;
-  justify-items: center;
-  gap: 0.55rem;
-}
-
-.sidebar-corner-launch .brand-mark {
-  width: 48px;
-  height: 48px;
-  box-shadow: 0 14px 30px rgba(var(--accent-deep-rgb), 0.16);
-}
-
-.sidebar-scrim {
-  display: none;
-}
-
-.app-topbar {
-  position: sticky;
-  top: 1rem;
-  z-index: 35;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  min-height: 72px;
-  padding: 0.85rem 1rem;
-}
-
-.topbar-centered-logo {
-  grid-column: 2;
-  justify-self: center;
-}
-
-.topbar-page-name {
-  grid-column: 3;
-  justify-self: end;
-  max-width: 100%;
-  overflow: hidden;
-  color: var(--text-main);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sidebar-toggle-button,
-.sidebar-icon-button {
-  min-height: 44px;
-  border: 1px solid rgba(var(--accent-rgb), 0.14);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.9);
-  color: var(--red-deep);
-  font-weight: 950;
-  padding: 0.65rem 0.95rem;
-}
-
-.js-sidebar-menu-button {
-  grid-column: 1;
-  justify-self: start;
-}
-
 .dashboard-layout.has-sidebar {
   display: grid;
   grid-template-columns: minmax(15.5rem, 18rem) minmax(0, 1fr);
@@ -5536,26 +5474,6 @@ summary:focus-visible {
 .sidebar-logo-lockup .brand-mark {
   width: 46px;
   height: 46px;
-}
-
-.sidebar-menu-under-logo {
-  margin-top: 0.35rem;
-  width: 46px;
-  padding-inline: 0;
-  justify-content: center;
-}
-
-.sidebar-head-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  justify-content: flex-end;
-}
-
-.sidebar-icon-button {
-  min-height: 38px;
-  padding: 0.45rem 0.7rem;
-  font-size: 0.72rem;
 }
 
 .is-mobile-only {
@@ -5649,35 +5567,9 @@ summary:focus-visible {
 }
 
 @media (max-width: 900px) {
-  .app-topbar {
-    top: 0.65rem;
-    grid-template-columns: 1fr auto 1fr;
-    min-height: 64px;
-  }
-
-  .topbar-brand-mark .brand-mark,
-  .topbar-centered-logo .brand-mark {
-    width: 42px;
-    height: 42px;
-  }
-
-  .topbar-page-name {
-    font-size: 1rem;
-  }
-
   .dashboard-layout.has-sidebar,
   .dashboard-layout.has-sidebar.is-sidebar-closed {
     display: block;
-  }
-
-  .dashboard-layout.has-sidebar:has(.app-sidebar.is-open) .content-panel {
-    transform: translateX(min(7vw, 2rem));
-    filter: blur(3px);
-    transition: transform 220ms ease, filter 220ms ease;
-  }
-
-  .dashboard-layout.has-sidebar.is-sidebar-closed .content-panel {
-    margin-left: 4.45rem;
   }
 
   .app-sidebar,
@@ -5713,16 +5605,6 @@ summary:focus-visible {
     max-width: 2.2rem;
   }
 
-  .sidebar-scrim {
-    display: block;
-    position: fixed;
-    inset: 0;
-    z-index: 55;
-    border: 0;
-    background: rgba(16, 24, 40, 0.14);
-    backdrop-filter: blur(2px);
-  }
-
   .is-mobile-only {
     display: inline-flex;
   }
@@ -5739,22 +5621,273 @@ summary:focus-visible {
     grid-template-columns: 1fr;
   }
 
-  .sidebar-corner-launch {
-    top: max(0.75rem, env(safe-area-inset-top));
-    left: max(0.75rem, env(safe-area-inset-left));
-  }
 }
 
 @media (max-width: 540px) {
-  .app-topbar {
-    padding: 0.65rem;
+}
+
+/* Day 24: permanent left navigation with right routine panel */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.feature-card,
+.surface-panel,
+.month-date-cell,
+.planning-input,
+.feedback-input {
+  border-color: rgba(var(--accent-deep-rgb), 0.16);
+}
+
+.tab-heading h1,
+.coming-soon-card h1,
+.right-routine-header h2 {
+  text-shadow: 0 2px 8px rgba(var(--accent-deep-rgb), 0.12);
+}
+
+.day24-layout {
+  grid-template-columns: minmax(13.5rem, 16rem) minmax(0, 1fr) minmax(16rem, 20rem) !important;
+  gap: clamp(0.9rem, 1.7vw, 1.25rem);
+}
+
+.day24-left-sidebar {
+  display: flex !important;
+  width: auto;
+}
+
+.day24-left-sidebar .sidebar-head {
+  border-bottom: 1px solid rgba(var(--accent-deep-rgb), 0.12);
+  padding-bottom: 1rem;
+}
+
+.day24-left-sidebar .sidebar-logo-lockup {
+  justify-content: flex-start;
+}
+
+.day24-left-sidebar .sidebar-logo-lockup span {
+  color: var(--red-deep);
+  font-size: 1.15rem;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+}
+
+.sidebar-settings-slot {
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(var(--accent-deep-rgb), 0.12);
+}
+
+.settings-nav-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.home-day24-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.home-welcome-card {
+  min-height: clamp(18rem, 35vh, 28rem);
+  align-content: center;
+}
+
+.home-mini-status {
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 1.2rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(var(--accent-deep-rgb), 0.12);
+  background: rgba(255, 255, 255, 0.62);
+  padding: 0.9rem 1rem;
+}
+
+.home-mini-status span {
+  color: var(--text-soft);
+  font-size: 0.9rem;
+}
+
+.right-routine-sidebar {
+  position: sticky;
+  top: 1rem;
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+  min-height: calc(100vh - 2rem);
+  padding: 1.15rem;
+}
+
+.right-routine-header {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.right-routine-header h2 {
+  margin: 0;
+  color: var(--red-deep);
+  font-size: clamp(1.25rem, 2vw, 1.75rem);
+  line-height: 1.08;
+}
+
+.routine-meaning-button {
+  justify-self: end;
+  min-height: 44px;
+  color: var(--red-deep);
+  font-weight: 900;
+}
+
+.routine-meaning-panel,
+.routine-flow-card,
+.right-routine-item {
+  border: 1px solid rgba(var(--accent-deep-rgb), 0.14);
+  border-radius: 1.15rem;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 16px 34px rgba(var(--accent-deep-rgb), 0.08);
+  padding: 0.9rem;
+}
+
+.right-routine-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.right-routine-item {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.right-routine-item strong,
+.right-routine-item span {
+  display: block;
+}
+
+.right-routine-item span {
+  color: var(--text-soft);
+  font-size: 0.88rem;
+}
+
+.routine-add-button {
+  width: 100%;
+  min-height: 58px;
+  border: 1px solid rgba(var(--accent-deep-rgb), 0.18);
+  border-radius: 1.2rem;
+  background: linear-gradient(135deg, var(--red), var(--red-deep));
+  color: white;
+  font-size: 2rem;
+  font-weight: 950;
+  box-shadow: 0 18px 34px rgba(var(--accent-deep-rgb), 0.16);
+}
+
+.routine-add-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.routine-flow-card {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.routine-flow-card h3 {
+  margin: 0;
+  color: var(--red-deep);
+  font-size: 1.2rem;
+}
+
+.routine-flow-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  justify-content: flex-end;
+}
+
+.right-routine-message {
+  margin: 0;
+  border-radius: 0.9rem;
+  background: rgba(var(--accent-rgb), 0.08);
+  color: var(--red-deep);
+  font-weight: 850;
+  padding: 0.75rem 0.85rem;
+}
+
+.coming-soon-view {
+  display: grid;
+  min-height: min(62vh, 38rem);
+  place-items: center;
+}
+
+.coming-soon-card {
+  display: grid;
+  justify-items: center;
+  gap: 0.45rem;
+  text-align: center;
+}
+
+.coming-soon-card h1 {
+  margin: 0;
+  color: var(--red-deep);
+  font-size: clamp(3rem, 9vw, 7rem);
+  line-height: 0.95;
+}
+
+.calendar-month-picker .planning-input {
+  min-height: 44px;
+  width: 11rem;
+}
+
+@media (max-width: 1180px) {
+  .day24-layout {
+    grid-template-columns: minmax(12.5rem, 14.5rem) minmax(0, 1fr) !important;
   }
 
-  .sidebar-toggle-button {
-    padding-inline: 0.75rem;
+  .right-routine-sidebar {
+    position: static;
+    grid-column: 1 / -1;
+    min-height: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .day24-layout {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
   }
 
-  .topbar-page-name {
-    display: none;
+  .day24-left-sidebar {
+    position: static;
+    min-height: 0;
+    border-radius: 1.35rem;
+  }
+
+  .day24-left-sidebar .sidebar-nav {
+    max-height: none;
+  }
+
+  .right-routine-sidebar {
+    order: 3;
+  }
+
+  .content-panel {
+    order: 2;
+  }
+
+  .calendar-month-controls {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .month-calendar-card {
+    transform: none !important;
   }
 }

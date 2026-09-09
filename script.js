@@ -4,12 +4,12 @@ const html = htm.bind(React.createElement);
 
 const NAV_ITEMS = [
   { id: "home", label: "Home" },
-  { id: "routine", label: "Your Routine" },
   { id: "calendar", label: "Calendar" },
   { id: "ask", label: "Ask VIRELI" },
   { id: "improve", label: "How We Can Improve" },
-  { id: "settings", label: "Settings" },
 ];
+
+const SETTINGS_NAV_ITEM = { id: "settings", label: "Settings" };
 
 function getPrimaryNavItems() {
   return NAV_ITEMS;
@@ -176,7 +176,7 @@ function getBlankSetupRoutineDraft(baseRoutine = EMPTY_ROUTINE_DRAFT) {
   };
 }
 
-const APP_VERSION = "day23-sidebar-routine-cleanup-20260907";
+const APP_VERSION = "day24-right-routine-cleanup-20260908";
 const INTRO_ANIMATION_SECONDS = 1.35;
 const INTRO_SCREEN_DURATION_MS = 3200;
 const THEME_TRANSITION_DURATION_MS = 2000;
@@ -223,7 +223,19 @@ const PRIMARY_USE_DESCRIPTIONS = {
 };
 const ROUTINE_DAY_OPTIONS = ["Every day", "Weekdays", "Weekends", "Custom"];
 const SETUP_STEPS = ["Your Name", "Schedule"];
-const FEEDBACK_AREAS = ["General", "Bug", "Confusing", "Feature idea", "Design"];
+const FEEDBACK_AREAS = [
+  "Opening",
+  "Account",
+  "Check In",
+  "Setup",
+  "Home",
+  "Your Routine",
+  "Calendar",
+  "Ask VIRELI",
+  "Settings",
+  "Design",
+  "Bug",
+];
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const REMINDER_TIMING_OPTIONS = [
   "At planned time",
@@ -4191,6 +4203,7 @@ function SetupRoutineBuilderScreen({
   onRoutineActivityChange,
   onRoutineActivityAdd,
   onRoutineActivityRemove,
+  onRoutineQuickAdd,
   onSaveRoutine,
 }) {
   const dailyActivities = Array.isArray(routineDraft.dailyActivities)
@@ -4445,6 +4458,7 @@ function RoutineTab({
   onRoutineIntervalSelect,
   onRoutineActivityChange,
   onRoutineActivityAdd,
+  onRoutineQuickAdd,
   onRoutineActivityRemove,
   onSaveRoutine,
 }) {
@@ -4891,6 +4905,142 @@ function RoutineTab({
   `;
 }
 
+function RoutineSidebar({
+  routineDraft,
+  routine,
+  onRoutineQuickAdd,
+  onRoutineActivityRemove,
+  onSaveRoutine,
+}) {
+  const [routineHelpOpen, setRoutineHelpOpen] = useState(false);
+  const [flowStep, setFlowStep] = useState("overview");
+  const [taskDraft, setTaskDraft] = useState("");
+  const [durationDraft, setDurationDraft] = useState("");
+  const [routineMessage, setRoutineMessage] = useState("");
+  const routineItems = (Array.isArray(routineDraft.dailyActivities) ? routineDraft.dailyActivities : [])
+    .filter((activity) => String(activity.name || "").trim())
+    .slice(0, 2);
+  const canAddMore = routineItems.length < 2;
+
+  function startAddFlow() {
+    if (!canAddMore) {
+      setRoutineMessage("VIRELI keeps your daily routine to two activities so it stays realistic.");
+      return;
+    }
+    setRoutineMessage("");
+    setTaskDraft("");
+    setDurationDraft("");
+    setFlowStep("task");
+  }
+
+  function saveRoutineItem() {
+    const title = taskDraft.trim();
+    if (!title || !durationDraft) {
+      setRoutineMessage("Add a routine task and duration first.");
+      return;
+    }
+    onRoutineQuickAdd(title, durationDraft);
+    setRoutineMessage("Routine saved.");
+    setFlowStep("overview");
+    setTaskDraft("");
+    setDurationDraft("");
+  }
+
+  return html`
+    <aside className="surface-panel right-routine-sidebar" aria-label="Your Routine">
+      <div className="right-routine-header">
+        <p className="eyebrow">Your Routine</p>
+        <h2 className="font-display">Do something everyday which gives you purpose.</h2>
+        <button
+          type="button"
+          className="text-link-button routine-meaning-button"
+          onClick=${() => setRoutineHelpOpen((currentValue) => !currentValue)}
+        >
+          What does this mean?
+        </button>
+      </div>
+
+      ${routineHelpOpen
+        ? html`
+            <div className="routine-meaning-panel">
+              A small routine gives your day a steady anchor. Pick one or two things you can actually keep doing, and VIRELI will plan around them.
+            </div>
+          `
+        : null}
+
+      ${flowStep === "overview"
+        ? html`
+            <div className="right-routine-list">
+              ${routineItems.length
+                ? routineItems.map(
+                    (activity, index) => html`
+                      <div key=${activity.id || `right-routine-${index}`} className="right-routine-item">
+                        <div>
+                          <strong>${activity.name}</strong>
+                          <span>${[
+                            activity.durationMinutes ? formatDurationFromMinutes(Number(activity.durationMinutes)) : "",
+                            activity.usualTime ? formatTimeLabel(activity.usualTime) : "Every day",
+                          ].filter(Boolean).join(" · ")}</span>
+                        </div>
+                        <button type="button" className="icon-text-button" onClick=${() => onRoutineActivityRemove(index)}>
+                          Remove
+                        </button>
+                      </div>
+                    `,
+                  )
+                : html`<p className="soft-note-inline">Start with one small routine.</p>`}
+            </div>
+            <button type="button" className="routine-add-button" onClick=${startAddFlow} disabled=${!canAddMore} aria-label="Add routine item">
+              +
+            </button>
+            ${!canAddMore
+              ? html`<p className="soft-note-inline">You can keep up to two daily routine activities.</p>`
+              : null}
+          `
+        : flowStep === "task"
+        ? html`
+            <div className="routine-flow-card">
+              <p className="eyebrow">Routine task</p>
+              <h3 className="font-display">What is the task?</h3>
+              <input
+                className="planning-input"
+                value=${taskDraft}
+                onInput=${(event) => setTaskDraft(event.target.value)}
+                placeholder="Reading, stretching, cleaning..."
+                autoFocus=${true}
+              />
+              <div className="routine-flow-actions">
+                <button type="button" className="secondary-button" onClick=${() => setFlowStep("overview")}>Back</button>
+                <button type="button" className="primary-button" onClick=${() => taskDraft.trim() && setFlowStep("duration")} disabled=${!taskDraft.trim()}>
+                  Continue
+                </button>
+              </div>
+            </div>
+          `
+        : html`
+            <div className="routine-flow-card">
+              <p className="eyebrow">Routine duration</p>
+              <h3 className="font-display">How long does this usually take?</h3>
+              <select className="planning-input" value=${durationDraft} onChange=${(event) => setDurationDraft(event.target.value)}>
+                <option value="">Choose duration</option>
+                ${[5, 10, 15, 20, 30, 45, 60].map(
+                  (minutes) => html`<option key=${minutes} value=${String(minutes)}>${formatDurationFromMinutes(minutes)}</option>`,
+                )}
+              </select>
+              <div className="routine-flow-actions">
+                <button type="button" className="secondary-button" onClick=${() => setFlowStep("task")}>Back</button>
+                <button type="button" className="primary-button" onClick=${saveRoutineItem} disabled=${!durationDraft}>
+                  Save routine
+                </button>
+              </div>
+            </div>
+          `}
+
+      ${routineMessage ? html`<p className="right-routine-message">${routineMessage}</p>` : null}
+    </aside>
+  `;
+}
+
 function HomeTab({
   profile,
   routine,
@@ -4916,10 +5066,6 @@ function HomeTab({
     .sort((a, b) => `${a.scheduledDate || a.dueDate || "9999-12-31"} ${a.scheduledTime || ""}`.localeCompare(`${b.scheduledDate || b.dueDate || "9999-12-31"} ${b.scheduledTime || ""}`));
   const nextTask = sortedTasks[0];
   const routineReady = hasSavedRoutine(routine);
-  const todaySchedule = getChronologicalDayItems({ routine, homeworkItems: [], calendarTasks, savedClasses })
-    .filter((item) => item.source !== "free")
-    .slice(0, 8);
-  const completedToday = calendarTasks.filter((item) => item.completed && isDueToday(item, getDateInputValue())).length;
 
   return html`
     <${motion.section}
@@ -4933,385 +5079,37 @@ function HomeTab({
       <div className="tab-heading home-heading">
         <div>
           <p className="eyebrow">${getTimeGreeting()}, ${getFirstName(profile)}</p>
-          <h1 className="font-display">What should I do right now?</h1>
+          <h1 className="font-display">Welcome to VIRELI</h1>
         </div>
       </div>
 
-      <div className="home-grid planner-dashboard-grid home-simple-grid">
-        <article className="feature-card next-task-card">
-          <p className="eyebrow">Recommended now</p>
+      <div className="home-grid home-day24-grid">
+        <article className="feature-card next-task-card home-welcome-card">
           ${!routineReady
             ? html`
                 <h2 className="font-display">Set up your routine first</h2>
                 <p>VIRELI needs your normal daily routine before it can properly organize your day.</p>
                 <div className="card-footer-row">
-                  <button type="button" className="primary-button" onClick=${() => onTabChange("routine")}>Set Up My Routine</button>
-                </div>
-              `
-            : nextTask
-            ? html`
-                <div className="next-task-main">
-                  <div>
-                    <h2 className="font-display">${nextTask.title}</h2>
-                    <p>${nextTask.scheduledTime ? `Scheduled ${formatTimeLabel(nextTask.scheduledTime)}` : "VIRELI can place this into your day."}</p>
-                  </div>
-                  <span className="date-chip">${formatDurationFromMinutes(Number(nextTask.durationMinutes) || DEFAULT_TASK_DURATION_MINUTES)}</span>
-                </div>
-                <div className="card-footer-row next-task-actions">
-                  <button type="button" className="primary-button" onClick=${() => onTabChange("calendar")}>View schedule</button>
-                  <button type="button" className="secondary-button" onClick=${() => onCalendarTaskToggle?.(nextTask.id)}>Done</button>
-                  <button type="button" className="secondary-button" onClick=${() => onTabChange("ask")}>Move</button>
+                  <button type="button" className="primary-button" onClick=${() => document.querySelector(".right-routine-sidebar")?.scrollIntoView({ behavior: "smooth", block: "start" })}>Set Up My Routine</button>
                 </div>
               `
             : html`
-                <h2 className="font-display">No tasks yet.</h2>
-                <p>Ask VIRELI to add something when you are ready to plan it.</p>
-                <div className="card-footer-row">
-                  <button type="button" className="primary-button" onClick=${() => onTabChange("ask")}>Ask VIRELI</button>
-                </div>
+                <h2 className="font-display">Your routine is ready.</h2>
+                <p>Use the routine panel to keep your daily anchors updated, and VIRELI will use them when organizing your calendar.</p>
+                ${nextTask
+                  ? html`
+                      <div className="home-mini-status">
+                        <strong>${nextTask.title}</strong>
+                        <span>${nextTask.scheduledTime ? `Scheduled ${formatTimeLabel(nextTask.scheduledTime)}` : "Ready to place on your calendar"}</span>
+                      </div>
+                    `
+                  : null}
               `}
-        </article>
-
-        <article className="feature-card">
-          <h3 className="font-display">Up next</h3>
-          ${sortedTasks.slice(1, 4).length
-            ? html`
-                <div className="selected-day-list">
-                  ${sortedTasks.slice(1, 4).map(
-                    (task) => html`
-                      <div key=${`up-next-${task.id}`} className="selected-day-item is-task">
-                        <div>
-                          <strong>${task.title}</strong>
-                          <span>${[task.scheduledDate ? formatShortDate(task.scheduledDate) : "", task.scheduledTime ? formatTimeLabel(task.scheduledTime) : ""].filter(Boolean).join(" · ") || "Unscheduled"}</span>
-                        </div>
-                      </div>
-                    `,
-                  )}
-                </div>
-              `
-            : html`<p>No other tasks waiting.</p>`}
-        </article>
-
-        <article className="feature-card feature-card-quote-wide">
-          <h3 className="font-display">Today’s schedule</h3>
-          ${!routineReady
-            ? html`
-                <p>VIRELI needs your routine first before it can show a useful daily schedule.</p>
-                <div className="card-footer-row">
-                  <button type="button" className="secondary-button" onClick=${() => onTabChange("routine")}>Open Your Routine</button>
-                </div>
-              `
-            : todaySchedule.length
-            ? html`
-                <div className="selected-day-list">
-                  ${todaySchedule.map(
-                    (item) => html`
-                      <div key=${`today-${item.id}`} className=${cx("selected-day-item", `is-${item.source}`)}>
-                        <div>
-                          <strong>${item.title}</strong>
-                          <span>${item.timeLabel}</span>
-                        </div>
-                      </div>
-                    `,
-                  )}
-                </div>
-              `
-            : html`<p>Your schedule is open today.</p>`}
-        </article>
-
-        <article className="feature-card">
-          <h3 className="font-display">Daily progress</h3>
-          <p>${completedToday} completed today · ${sortedTasks.length} task${sortedTasks.length === 1 ? "" : "s"} left.</p>
         </article>
       </div>
     </${motion.section}>
   `;
 
-  const recommendation = getNextAssignmentRecommendation({
-    routine,
-    homeworkItems,
-    calendarTasks,
-    mood: moodSelection,
-  });
-  const schedule = recommendation.schedule;
-  const progress = getTodayProgress(homeworkItems);
-  const freeWindows = recommendation.freeWindows.slice(0, 4);
-  const deadlines = getUpcomingDeadlines(homeworkItems);
-  const warnings = getWorkloadWarnings(homeworkItems, routine, calendarTasks);
-  const missedItems = getMissedAssignments(homeworkItems);
-  const chartSegments = getChartSegments(schedule);
-  const nextItem = recommendation.item;
-  const nextWindow = recommendation.freeWindows[0];
-  const upNextItems = homeworkItems
-    .filter((item) => !item.completed && (!nextItem || item.id !== nextItem.id))
-    .sort((a, b) => `${getItemCalendarDate(a) || "9999-12-31"} ${a.scheduledTime || ""}`.localeCompare(`${getItemCalendarDate(b) || "9999-12-31"} ${b.scheduledTime || ""}`))
-    .slice(0, 3);
-  const todayItems = getChronologicalDayItems({ routine, homeworkItems, calendarTasks, savedClasses }).slice(0, 10);
-  const tomorrowPreview = getTomorrowPreview({ homeworkItems, calendarTasks, routine });
-  const starterTasks = getStarterTasks(profile.primaryUse);
-  const isNewerUser = homeworkItems.length + calendarTasks.length + (routine.dailyActivities || []).filter((item) => item.name).length < 3;
-  const starterTargetTab = profile.primaryUse === "School" ? "assignments" : "tasks";
-  const recommendationFactors = [
-    ...getRecommendationFactors({ item: nextItem, recommendation, routine, mood: moodSelection }),
-    ...getConsistencyFactors(nextItem, consistencyEvents),
-  ].slice(0, 5);
-
-  return html`
-    <${motion.section}
-      key="home"
-      className="tab-view"
-      initial=${{ opacity: 0, y: 20 }}
-      animate=${{ opacity: 1, y: 0 }}
-      exit=${{ opacity: 0, y: -16 }}
-      transition=${{ duration: 0.25 }}
-    >
-      <div className="tab-heading home-heading">
-        <div>
-          <p className="eyebrow">${getTimeGreeting()}, ${getFirstName(profile)}</p>
-          <h1 className="font-display">What should I be doing right now?</h1>
-          <p className="tab-heading-lead">
-            VIRELI uses your assignments, routine, mood, and real open time to choose one useful next step.
-          </p>
-        </div>
-        <span className="date-chip free-hours-chip">${freeWindows[0] ? `${freeWindows[0].label} open` : "No open window right now"}</span>
-      </div>
-
-      <div className="home-grid planner-dashboard-grid">
-        <article className="feature-card next-task-card">
-          <p className="eyebrow">Right Now</p>
-          ${nextItem
-            ? html`
-                <div className="next-task-main">
-                  <div>
-                    <h2 className="font-display">${nextItem.title}</h2>
-                    <p>${getAssignmentSubject(nextItem, savedClasses)}</p>
-                  </div>
-                  <span className="date-chip">${formatDurationFromMinutes(recommendation.duration)}</span>
-                </div>
-                <div className="next-task-meta">
-                  <span>Start: ${recommendation.startTime ? formatTimeLabel(recommendation.startTime) : "when you are ready"}</span>
-                  <span>${nextItem.dueDate ? `Due ${formatShortDate(nextItem.dueDate)}` : "No due date"}</span>
-                  <span>${nextWindow ? `Best window: ${nextWindow.label}` : "No free window found"}</span>
-                </div>
-                <details className="why-this-panel">
-                  <summary>Why this?</summary>
-                  ${recommendationFactors.length
-                    ? html`
-                        <ul>
-                          ${recommendationFactors.map((factor) => html`<li key=${factor}>${factor}</li>`)}
-                        </ul>
-                      `
-                    : html`<p>VIRELI chose this from the schedule data saved in your planner.</p>`}
-                </details>
-                <div className="card-footer-row next-task-actions">
-                  <button type="button" className="primary-button" onClick=${() => onTabChange("calendar")}>Start</button>
-                  <button type="button" className="secondary-button" onClick=${() => onHomeworkCompleteToggle(nextItem.id)}>Done</button>
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick=${() => nextWindow && onHomeworkReschedule(nextItem.id, getDateInputValue(), minutesToTimeValue(nextWindow.startMinutes))}
-                    disabled=${!nextWindow}
-                  >
-                    Reschedule
-                  </button>
-                </div>
-              `
-            : html`
-                <div className="empty-action-state">
-                  <h2 className="font-display">No assignments yet.</h2>
-                  <p>Add one assignment and VIRELI will find a realistic time to work on it.</p>
-                  <button type="button" className="primary-button" onClick=${() => onTabChange("assignments")}>Add assignment</button>
-                </div>
-              `}
-        </article>
-
-        <article className="feature-card progress-card">
-          <p className="eyebrow">Today’s progress</p>
-          <h3 className="font-display">${progress.completed}/${progress.total || 0} done</h3>
-          <div className="progress-track"><span style=${{ width: `${progress.percent}%` }}></span></div>
-          <p>${progress.remaining ? `${progress.remaining} item${progress.remaining === 1 ? "" : "s"} remaining today.` : "Nothing else scheduled for today."}</p>
-        </article>
-
-        <article className="feature-card deadline-card">
-          <p className="eyebrow">Up Next</p>
-          ${upNextItems.length
-            ? html`
-                <div className="compact-list">
-                  ${upNextItems.map(
-                    (item) => html`
-                      <div key=${`up-next-${item.id}`} className="compact-list-row">
-                        <strong>${item.title}</strong>
-                        <span>${getPlanSummaryMeta(item)} · ${getAssignmentDuration(item)} min</span>
-                      </div>
-                    `,
-                  )}
-                </div>
-              `
-            : html`<p>No queued work after the right-now task.</p>`}
-          ${warnings.length
-            ? html`
-                <div className="warning-list">
-                  ${warnings.map((warning) => html`<p key=${warning.dateValue}>${warning.message}</p>`)}
-                </div>
-              `
-            : null}
-        </article>
-
-        ${missedItems.length
-          ? html`
-              <article className="feature-card missed-work-card">
-                <p className="eyebrow">Missed sessions</p>
-                ${missedItems.map((item) => {
-                  const nextWindowForMissed = freeWindows[0];
-                  return html`
-                    <div key=${`missed-${item.id}`} className="missed-work-row">
-                      <p>You missed your ${item.scheduledTime ? formatTimeLabel(item.scheduledTime) : ""} ${item.title} session.</p>
-                      <div>
-                        <button
-                          type="button"
-                          className="secondary-button"
-                          onClick=${() => nextWindowForMissed && onHomeworkReschedule(item.id, getDateInputValue(), minutesToTimeValue(nextWindowForMissed.startMinutes))}
-                          disabled=${!nextWindowForMissed}
-                        >
-                          Reschedule
-                        </button>
-                        <button type="button" className="secondary-button" onClick=${() => onHomeworkCompleteToggle(item.id)}>Mark complete</button>
-                        <button type="button" className="secondary-button" onClick=${() => onHomeworkDelete(item.id)}>Skip</button>
-                      </div>
-                    </div>
-                  `;
-                })}
-              </article>
-            `
-          : null}
-
-        <article className="feature-card timeline-card">
-          <div className="card-topline card-topline-simple">
-            <span className="micro-badge">
-              ${formatTimeLabel(minutesToTimeValue(schedule.wakeMinutes))} - ${formatTimeLabel(minutesToTimeValue(schedule.bedMinutes))}
-            </span>
-          </div>
-          <h3 className="font-display section-title-lg">Available Time</h3>
-          <div className="day-chart" aria-label="Free and busy chart for today">
-            <div className="day-chart-track">
-              ${chartSegments.map(
-                (segment) => html`
-                  <span
-                    key=${segment.id}
-                    className=${cx("day-chart-segment", `is-${segment.source}`)}
-                    style=${{ width: `${segment.width}%` }}
-                    title=${segment.title}
-                  ></span>
-                `,
-              )}
-            </div>
-            <div className="day-chart-legend">
-              <span><i className="is-free"></i>Free</span>
-              <span><i className="is-busy"></i>Busy</span>
-            </div>
-          </div>
-          <div className="free-window-list">
-            ${freeWindows.length
-              ? freeWindows.map(
-                  (windowBlock) => html`
-                    <div key=${windowBlock.id} className="free-window-row">
-                      <strong>${windowBlock.label}</strong>
-                      <span>${windowBlock.durationLabel} available</span>
-                    </div>
-                  `,
-                )
-              : html`<p>No open windows left today.</p>`}
-          </div>
-        </article>
-
-        <article className="feature-card timeline-card today-schedule-card">
-          <p className="eyebrow">Today</p>
-          <h3 className="font-display section-title-lg">Remaining schedule</h3>
-          <div className="routine-timeline">
-            ${todayItems.length
-              ? todayItems.map(
-              (block) => html`
-                <div
-                  key=${block.id}
-                  className=${cx("timeline-block", `is-${block.source}`)}
-                >
-                  <div className="timeline-time">
-                    <strong>${block.timeLabel.split(" - ")[0]}</strong>
-                    <span>${block.timeLabel.split(" - ")[1] || ""}</span>
-                  </div>
-                  <div className="timeline-content">
-                    <span className="timeline-source">${block.sourceLabel || getScheduleSourceLabel(block.source, block)}</span>
-                    <p>${block.title}</p>
-                    <small>${block.durationLabel}</small>
-                  </div>
-                </div>
-              `,
-            )
-              : html`<p>No schedule blocks yet.</p>`}
-          </div>
-        </article>
-
-        <article className="feature-card deadline-card">
-          <p className="eyebrow">Upcoming Deadlines</p>
-          ${deadlines.length
-            ? html`
-                <div className="compact-list">
-                  ${deadlines.map(
-                    (item) => html`
-                      <div key=${`deadline-${item.id}`} className="compact-list-row">
-                        <strong>${item.title}</strong>
-                        <span>${formatShortDate(item.dueDate)} · ${getAssignmentDuration(item)} min</span>
-                      </div>
-                    `,
-                  )}
-                </div>
-              `
-            : html`<p>No due dates saved yet.</p>`}
-        </article>
-
-        <article className="feature-card deadline-card">
-          <p className="eyebrow">Tomorrow Preview</p>
-          ${tomorrowPreview.items.length || tomorrowPreview.freeWindows.length
-            ? html`
-                <div className="compact-list">
-                  ${tomorrowPreview.items.map(
-                    (item) => html`
-                      <div key=${`tomorrow-${item.id}`} className="compact-list-row">
-                        <strong>${item.title}</strong>
-                        <span>${getPlanSummaryMeta(item)}</span>
-                      </div>
-                    `,
-                  )}
-                  ${tomorrowPreview.freeWindows.map(
-                    (windowBlock) => html`
-                      <div key=${`tomorrow-window-${windowBlock.id}`} className="compact-list-row">
-                        <strong>${windowBlock.label}</strong>
-                        <span>${windowBlock.durationLabel} available</span>
-                      </div>
-                    `,
-                  )}
-                </div>
-              `
-            : html`<p>Tomorrow is open so far.</p>`}
-        </article>
-
-        ${isNewerUser
-          ? html`
-              <article className="feature-card starter-card">
-                <p className="eyebrow">Start with 3 things</p>
-                <h3 className="font-display section-title-lg">Build your first useful plan.</h3>
-                <div className="starter-task-row">
-                  ${starterTasks.map((task) => html`<span key=${task} className="step-chip">${task}</span>`)}
-                </div>
-                <button type="button" className="secondary-button" onClick=${() => onTabChange(starterTargetTab)}>
-                  Add first item
-                </button>
-              </article>
-            `
-          : null}
-      </div>
-    </${motion.section}>
-  `;
 }
 
 function EmptyPlannerPage({ pageTitle }) {
@@ -6030,14 +5828,21 @@ function CalendarTab({
           <h1 className="font-display">${getMonthLabel(monthAnchor)}</h1>
         </div>
         <div className="calendar-month-controls">
-          <button type="button" className="secondary-button" onClick=${() => onCalendarMonthChange(new Date(monthAnchor.getFullYear(), monthAnchor.getMonth() - 1, 1))}>
-            Previous
-          </button>
+          <label className="calendar-month-picker">
+            <span className="sr-only">Choose calendar month</span>
+            <input
+              type="month"
+              className="planning-input"
+              value=${`${monthAnchor.getFullYear()}-${String(monthAnchor.getMonth() + 1).padStart(2, "0")}`}
+              onInput=${(event) => {
+                if (event.target.value) {
+                  onCalendarMonthChange(new Date(`${event.target.value}-01T12:00:00`));
+                }
+              }}
+            />
+          </label>
           <button type="button" className="secondary-button" onClick=${() => onCalendarMonthChange(new Date())}>
             Today
-          </button>
-          <button type="button" className="secondary-button" onClick=${() => onCalendarMonthChange(new Date(monthAnchor.getFullYear(), monthAnchor.getMonth() + 1, 1))}>
-            Next
           </button>
         </div>
       </div>
@@ -6065,7 +5870,14 @@ function CalendarTab({
       </article>
 
       <div className="calendar-grid calendar-view-only-grid">
-        <article className="feature-card feature-card-quote-wide month-calendar-card">
+        <${motion.article}
+          key=${getMonthLabel(monthAnchor)}
+          className="feature-card feature-card-quote-wide month-calendar-card"
+          initial=${{ opacity: 0, x: 18 }}
+          animate=${{ opacity: 1, x: 0 }}
+          exit=${{ opacity: 0, x: -18 }}
+          transition=${{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+        >
           <div className="month-calendar-grid">
             ${WEEKDAY_LABELS.map(
               (day) => html`<div key=${day} className="month-weekday">${day}</div>`,
@@ -6108,7 +5920,7 @@ function CalendarTab({
               `;
             })}
           </div>
-        </article>
+        </${motion.article}>
         <article className="feature-card selected-day-panel">
           <div className="card-topline card-topline-simple">
             <span className="mood-chip">Selected day</span>
@@ -6170,142 +5982,19 @@ function CalendarTab({
 }
 
 function AskVireliTab({
-  messages,
-  recentAskHistory,
-  promptChips,
-  chatDraft,
-  isTyping,
-  chatError,
-  onLoadAskHistory,
-  onChatDraftChange,
-  onChatSubmit,
-  onChatRetry,
 }) {
-  const endRef = useRef(null);
-
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages, isTyping]);
-
   return html`
     <${motion.section}
       key="ask"
-      className="tab-view"
+      className="tab-view coming-soon-view"
       initial=${{ opacity: 0, y: 20 }}
       animate=${{ opacity: 1, y: 0 }}
       exit=${{ opacity: 0, y: -16 }}
       transition=${{ duration: 0.25 }}
     >
-      <div className="tab-heading">
-        <div>
-          <p className="eyebrow">Ask VIRELI</p>
-          <h1 className="font-display">Find the best time for a task.</h1>
-          <p className="tab-heading-lead">
-            Tell VIRELI what you need to do. It will look at your routine and
-            calendar, suggest a time, then ask before adding anything.
-          </p>
-        </div>
-      </div>
-
-      <div className="assistant-shell">
-        <div className="chat-shell">
-          <div className="ask-empty-note">
-            <p className="eyebrow">Scheduling helper</p>
-            <h2 className="font-display">Type a task and VIRELI will find an opening.</h2>
-            <p>
-              Suggestions below update from your routine, deadlines, and saved plans.
-            </p>
-          </div>
-          ${promptChips?.length
-            ? html`
-                <div className="ask-prompt-chip-row" aria-label="Contextual Ask VIRELI prompts">
-                  ${promptChips.map(
-                    (chip) => html`
-                      <button
-                        key=${chip}
-                        type="button"
-                        className="ask-prompt-chip"
-                        onClick=${() => onChatDraftChange(chip)}
-                        disabled=${isTyping}
-                      >
-                        ${chip}
-                      </button>
-                    `,
-                  )}
-                </div>
-              `
-            : null}
-
-          <div className="message-scroll">
-            ${messages.map(
-              (message) => html`
-                <div
-                  key=${message.id}
-                  className=${cx("message-row", `is-${message.role}`)}
-                >
-                  <div
-                    className=${cx("message-bubble", `is-${message.role}`)}
-                  >
-                    ${message.content}
-                  </div>
-                </div>
-              `,
-            )}
-
-            ${isTyping
-              ? html`
-                  <div className="message-row is-assistant">
-                    <div className="message-bubble is-assistant is-typing">
-                      <span></span>
-                      <span></span>
-                      <span></span>
-                    </div>
-                  </div>
-                `
-              : null}
-
-            ${chatError
-              ? html`
-                  <div className="message-row is-assistant">
-                    <div className="message-bubble is-assistant is-error">
-                      ${chatError}
-                      <button
-                        type="button"
-                        className="inline-retry-button"
-                        onClick=${onChatRetry}
-                      >
-                        Try again
-                      </button>
-                    </div>
-                  </div>
-                `
-              : null}
-
-            <div ref=${endRef}></div>
-          </div>
-
-          <form className="chat-input-row" onSubmit=${onChatSubmit}>
-            <input
-              type="text"
-              value=${chatDraft}
-              onInput=${(event) => onChatDraftChange(event.target.value)}
-              placeholder="What task do you need time for?"
-              aria-label="Ask VIRELI"
-              disabled=${isTyping}
-            />
-            <${DictationButton}
-              label="Mic"
-              onTranscript=${(text) => onChatDraftChange([chatDraft, text].filter(Boolean).join(" "))}
-            />
-            <button
-              type="submit"
-              className="primary-button"
-              disabled=${!chatDraft.trim() || isTyping}
-            >
-              Send
-            </button>
-          </form>
-        </div>
+      <div className="coming-soon-card">
+        <p className="eyebrow">Ask VIRELI</p>
+        <h1 className="font-display">COMING SOON</h1>
       </div>
     </${motion.section}>
   `;
@@ -6351,12 +6040,11 @@ function ImproveTab({
             className="feedback-input"
             value=${feedbackDraft.text}
             onInput=${(event) => onFeedbackChange(event.target.value)}
-            placeholder="Tell VIRELI what feels confusing, broken, helpful, or missing."
+            placeholder="tell us how we can improve"
             rows="8"
           ></textarea>
         </label>
         <div className="card-footer-row">
-          <span>One clear note is enough.</span>
           <button type="button" className="primary-button" onClick=${onFeedbackSubmit} disabled=${!feedbackDraft.text.trim()}>
             Submit
           </button>
@@ -6554,7 +6242,6 @@ function SettingsTab({
           <${DurationScrollPicker} label="Preferred daily workload hours" value=${routineDraft.preferredDailyWorkloadMinutes} options=${DURATION_PICKER_OPTIONS} onChange=${(value) => onRoutineChange("preferredDailyWorkloadMinutes", value)} />
           <div className="settings-action-row">
             <button type="button" className="primary-button" onClick=${onSaveRoutine}>Save schedule</button>
-            <button type="button" className="secondary-button" onClick=${() => onTabChange("routine")}>Open Your Routine</button>
           </div>
         </div>
       `;
@@ -6719,6 +6406,7 @@ function DashboardShell({
   onRoutineIntervalSelect,
   onRoutineActivityChange,
   onRoutineActivityAdd,
+  onRoutineQuickAdd,
   onRoutineActivityRemove,
   onSaveRoutine,
   onClassDraftChange,
@@ -6750,19 +6438,10 @@ function DashboardShell({
   onCalendarPreferenceChange,
   onSchedulingPreferenceChange,
 }) {
-  const [sidebarOpen, setSidebarOpen] = useState(() => loadSidebarState().open);
   let activeView = null;
   const primaryNavItems = getPrimaryNavItems();
-  const topSchedule = getTodayScheduleBlocks({ routine, homeworkItems, calendarTasks });
-  const pageLabel = NAV_ITEMS.find((item) => item.id === activeTab)?.label || "Home";
+  const pageLabel = [...NAV_ITEMS, SETTINGS_NAV_ITEM].find((item) => item.id === activeTab)?.label || "Home";
   const askPromptChips = getAskPromptChips({ routine, homeworkItems, calendarTasks, mood: moodSelection });
-
-  useEffect(() => {
-    writePersistentObject(SIDEBAR_STORAGE_KEY, {
-      open: sidebarOpen,
-      collapsed: !sidebarOpen,
-    });
-  }, [sidebarOpen]);
 
   if (activeTab === "home") {
     activeView = html`
@@ -6820,22 +6499,6 @@ function DashboardShell({
         onHomeworkDelete=${onHomeworkDelete}
         onCalendarTaskToggle=${onCalendarTaskToggle}
         onCalendarTaskDelete=${onCalendarTaskDelete}
-      />
-    `;
-  } else if (activeTab === "routine") {
-    activeView = html`
-      <${RoutineTab}
-        routineDraft=${routineDraft}
-        routine=${routine}
-        homeworkItems=${homeworkItems}
-        calendarTasks=${calendarTasks}
-        onRoutineChange=${onRoutineChange}
-        onRoutineWorkloadSelect=${onRoutineWorkloadSelect}
-        onRoutineIntervalSelect=${onRoutineIntervalSelect}
-        onRoutineActivityChange=${onRoutineActivityChange}
-        onRoutineActivityAdd=${onRoutineActivityAdd}
-        onRoutineActivityRemove=${onRoutineActivityRemove}
-        onSaveRoutine=${onSaveRoutine}
       />
     `;
   } else if (activeTab === "ask") {
@@ -6905,26 +6568,14 @@ function DashboardShell({
       <${CircleBackdrop} />
 
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-[1480px] flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
-        ${sidebarOpen
-          ? html`<button type="button" className="sidebar-scrim" aria-label="Close navigation" onClick=${() => setSidebarOpen(false)}></button>`
-          : null}
-
-        <div className=${cx("dashboard-layout has-sidebar", !sidebarOpen && "is-sidebar-closed")}>
-          <aside className=${cx("surface-panel sidebar-panel app-sidebar", sidebarOpen && "is-open", !sidebarOpen && "is-collapsed")}>
+        <div className="dashboard-layout has-sidebar day24-layout">
+          <aside className="surface-panel sidebar-panel app-sidebar is-open day24-left-sidebar">
             <div className="sidebar-head">
               <div>
                 <div className="sidebar-logo-lockup">
                   <${VireliLogoMark} className="brand-mark" />
+                  <span className="font-display">VIRELI</span>
                 </div>
-                <button
-                  type="button"
-                  className="sidebar-toggle-button sidebar-menu-under-logo"
-                  aria-label=${sidebarOpen ? "Close navigation menu" : "Open navigation menu"}
-                  aria-expanded=${sidebarOpen}
-                  onClick=${() => setSidebarOpen((currentValue) => !currentValue)}
-                >
-                  ☰
-                </button>
               </div>
             </div>
 
@@ -6944,11 +6595,29 @@ function DashboardShell({
                 `,
               )}
             </nav>
+            <div className="sidebar-settings-slot">
+              <button
+                type="button"
+                className=${cx("nav-button settings-nav-button", activeTab === "settings" && "is-active")}
+                onClick=${() => onTabChange("settings")}
+              >
+                <span aria-hidden="true">⚙</span>
+                <span className="nav-label">Settings</span>
+              </button>
+            </div>
           </aside>
 
           <main className="surface-panel content-panel">
             <${AnimatePresence} mode="wait">${activeView}</${AnimatePresence}>
           </main>
+
+          <${RoutineSidebar}
+            routineDraft=${routineDraft}
+            routine=${routine}
+            onRoutineQuickAdd=${onRoutineQuickAdd}
+            onRoutineActivityRemove=${onRoutineActivityRemove}
+            onSaveRoutine=${onSaveRoutine}
+          />
         </div>
 
       </div>
@@ -7246,12 +6915,8 @@ function App() {
     askSessionIdRef.current = makeId("ask-session");
     setMessages(buildInitialMessages(choice));
     setMoodCheckInComplete(true);
-    setLaunchSetupComplete(Boolean(profile.setupComplete));
-    if (!profile.setupComplete) {
-      setLaunchSetupStep(Math.max(1, Math.min(2, Number(profile.setupStep || 1))));
-    } else {
-      setActiveTab("home");
-    }
+    setLaunchSetupComplete(false);
+    setLaunchSetupStep(1);
     setProfile((currentProfile) => {
       const nextProfile = {
         ...currentProfile,
@@ -7365,8 +7030,8 @@ function App() {
   function handleContinueToVireli() {
     setProfileStepComplete(true);
     setMoodCheckInComplete(false);
-    setLaunchSetupStep(profile.setupComplete ? 2 : Math.max(1, Math.min(2, Number(profile.setupStep || 1))));
-    setLaunchSetupComplete(Boolean(profile.setupComplete));
+    setLaunchSetupStep(1);
+    setLaunchSetupComplete(false);
     setActiveTab("home");
   }
 
@@ -7532,14 +7197,14 @@ function App() {
       updatedAt: now,
     };
 
-    const nextDraft = { ...nextProfile, name: "", primaryUse: "" };
+    const nextDraft = { ...nextProfile };
     setProfile(nextProfile);
     setProfileDraft(nextDraft);
     setRoutineDraft(getBlankSetupRoutineDraft(routine));
     setProfileStepComplete(true);
     setMoodCheckInComplete(false);
-    setLaunchSetupStep(nextProfile.setupComplete ? 2 : Math.max(1, Math.min(2, Number(nextProfile.setupStep || 1))));
-    setLaunchSetupComplete(Boolean(nextProfile.setupComplete));
+    setLaunchSetupStep(1);
+    setLaunchSetupComplete(false);
   }
 
   function handleAccountSubmit(event, authMode = "signin") {
@@ -7575,14 +7240,14 @@ function App() {
       updatedAt: now,
     };
 
-    const nextDraft = { ...nextProfile, name: "", primaryUse: "" };
+    const nextDraft = { ...nextProfile };
     setProfile(nextProfile);
     setProfileDraft(nextDraft);
     setRoutineDraft(getBlankSetupRoutineDraft(routine));
     setProfileStepComplete(true);
     setMoodCheckInComplete(false);
-    setLaunchSetupStep(nextProfile.setupComplete ? 2 : Math.max(1, Math.min(2, Number(nextProfile.setupStep || 1))));
-    setLaunchSetupComplete(Boolean(nextProfile.setupComplete));
+    setLaunchSetupStep(1);
+    setLaunchSetupComplete(false);
   }
 
   async function handleVireliAccountSubmit(event) {
@@ -7668,14 +7333,14 @@ function App() {
       updatedAt: now,
     };
 
-    const nextDraft = { ...nextProfile, name: "", primaryUse: "" };
+    const nextDraft = { ...nextProfile };
     setProfile(nextProfile);
     setProfileDraft(nextDraft);
     setRoutineDraft(getBlankSetupRoutineDraft(routine));
     setProfileStepComplete(true);
     setMoodCheckInComplete(false);
-    setLaunchSetupStep(nextProfile.setupComplete ? 2 : Math.max(1, Math.min(2, Number(nextProfile.setupStep || 1))));
-    setLaunchSetupComplete(Boolean(nextProfile.setupComplete));
+    setLaunchSetupStep(1);
+    setLaunchSetupComplete(false);
     setAccountStep("choice");
     setAccountUsername("");
     setAccountPassword("");
@@ -7933,12 +7598,12 @@ function App() {
     };
 
     setProfile(nextProfile);
-    setProfileDraft({ ...nextProfile, name: "", primaryUse: "" });
+    setProfileDraft({ ...nextProfile });
     setRoutineDraft(getBlankSetupRoutineDraft(routine));
     setProfileStepComplete(true);
     setMoodCheckInComplete(false);
-    setLaunchSetupStep(nextProfile.setupComplete ? 2 : Math.max(1, Math.min(2, Number(nextProfile.setupStep || 1))));
-    setLaunchSetupComplete(Boolean(nextProfile.setupComplete));
+    setLaunchSetupStep(1);
+    setLaunchSetupComplete(false);
     setAccountStep("choice");
     setAccountUsername("");
     setAccountPassword("");
@@ -8031,6 +7696,29 @@ function App() {
         },
       ].slice(0, 2),
     }));
+  }
+
+  function handleRoutineQuickAdd(name, durationMinutes) {
+    const nextActivity = {
+      id: makeId("routine-activity"),
+      name: name.trim(),
+      durationMinutes: String(durationMinutes),
+      usualTime: "",
+      days: "Every day",
+      fixed: false,
+      flexible: true,
+      activityType: "Daily routine",
+      active: true,
+    };
+    const existingActivities = (routineDraft.dailyActivities || [])
+      .filter((activity) => String(activity.name || "").trim())
+      .slice(0, 1);
+    const nextRoutine = saveRoutine({
+      ...routineDraft,
+      dailyActivities: [...existingActivities, nextActivity].slice(0, 2),
+    });
+    setRoutine(nextRoutine);
+    setRoutineDraft(nextRoutine);
   }
 
   function handleRoutineActivityRemove(index) {
@@ -9373,7 +9061,7 @@ function classifyAskPlannerType(prompt) {
                   onModeItemSubmit=${handleModeItemSubmit}
                   onCalendarTaskEdit=${handleCalendarTaskEdit}
                   onCalendarTaskCancelEdit=${handleCalendarTaskCancelEdit}
-                  onCalendarMonthChange=${handleCalendarToday}
+                  onCalendarMonthChange=${setCalendarMonth}
                   onCalendarViewChange=${setCalendarView}
                   onSelectedCalendarDateChange=${setSelectedCalendarDate}
                   onCalendarTaskToggle=${handleCalendarTaskToggle}
@@ -9384,6 +9072,7 @@ function classifyAskPlannerType(prompt) {
                   onRoutineActivityChange=${handleRoutineActivityChange}
                   onRoutineActivityAdd=${handleRoutineActivityAdd}
                   onRoutineActivityRemove=${handleRoutineActivityRemove}
+                  onRoutineQuickAdd=${handleRoutineQuickAdd}
                   onSaveRoutine=${handleSaveRoutine}
                   onClassDraftChange=${setClassDraft}
                   onClassAdd=${handleClassAdd}
