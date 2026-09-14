@@ -5525,11 +5525,6 @@ summary:focus-visible {
   margin-bottom: 1rem;
 }
 
-.selected-day-panel {
-  align-self: start;
-  min-width: 0;
-}
-
 .compact-day-flow {
   margin-top: 1rem;
   padding-top: 1rem;
@@ -5889,5 +5884,421 @@ summary:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .month-calendar-card {
     transform: none !important;
+  }
+}
+
+/* Day 25: responsive web app refinement */
+:root {
+  --day25-border: 3px solid #050505;
+  --day25-radius: 0.5rem;
+  --day25-motion: 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.feature-card,
+.surface-panel,
+.google-auth-panel,
+.setup-panel,
+.routine-panel,
+.check-in-card,
+.ask-vireli-card,
+.settings-detail-screen,
+.settings-menu-row,
+.month-calendar-card,
+.routine-simple-card,
+.routine-mini-card,
+.routine-collections-card,
+.routine-summary-card,
+.routine-editor-card {
+  border: var(--day25-border) !important;
+  border-radius: var(--day25-radius) !important;
+}
+
+.planning-input,
+.feedback-input,
+.scroll-picker-select,
+.month-date-cell {
+  border: 2px solid rgba(5, 5, 5, 0.78) !important;
+  border-radius: var(--day25-radius) !important;
+}
+
+.auth-inline-error,
+.email-auth-message,
+.status-banner,
+.routine-meaning-panel,
+.routine-flow-card,
+.right-routine-item,
+.expanded-date-content {
+  animation: day25-pop-in var(--day25-motion) both;
+}
+
+@keyframes day25-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.day25-mobile-toolbar {
+  display: none;
+}
+
+.day25-mobile-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  border: 0;
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.sidebar-mobile-close,
+.routine-mobile-close {
+  justify-self: end;
+  margin-bottom: 0.75rem;
+}
+
+.right-routine-open-button {
+  width: 100%;
+  min-height: 46px;
+  justify-content: center;
+}
+
+.routine-purpose-message {
+  display: grid;
+  gap: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.routine-purpose-message h2 {
+  margin: 0;
+  color: var(--red-deep);
+  font-size: clamp(1.45rem, 3.5vw, 2.25rem);
+  line-height: 1.05;
+}
+
+.routine-purpose-message .secondary-button {
+  justify-self: end;
+}
+
+.routine-purpose-message .routine-meaning-panel {
+  justify-self: end;
+  max-width: min(100%, 34rem);
+}
+
+.calendar-view-only-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.month-calendar-grid {
+  align-items: stretch;
+}
+
+.day25-expandable-date {
+  cursor: pointer;
+  min-width: 0;
+  text-align: left;
+  transition:
+    border-color var(--day25-motion),
+    box-shadow var(--day25-motion),
+    transform var(--day25-motion);
+}
+
+.day25-expandable-date:focus-visible {
+  outline: 3px solid rgba(var(--accent-rgb), 0.35);
+  outline-offset: 3px;
+}
+
+.day25-expandable-date.is-expanded {
+  grid-column: span 2;
+  min-height: 11.5rem;
+  background: #ffffff;
+  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.14);
+}
+
+.expanded-date-content {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 2px solid rgba(5, 5, 5, 0.16);
+}
+
+.expanded-date-content > strong {
+  color: var(--red-deep);
+  font-weight: 950;
+}
+
+.expanded-date-content p {
+  margin: 0;
+  color: var(--text-soft);
+  font-weight: 800;
+}
+
+.expanded-date-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.expanded-date-item {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.5rem 0.55rem;
+  border-left: 4px solid var(--red-deep);
+  border-radius: 0.4rem;
+  background: rgba(248, 250, 252, 0.88);
+}
+
+.expanded-date-item span,
+.expanded-date-item small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.expanded-date-item span {
+  color: var(--text-main);
+  font-weight: 900;
+}
+
+.expanded-date-item small {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.ask-vireli-card {
+  display: grid;
+  gap: 1rem;
+}
+
+.ask-vireli-card .chat-shell {
+  gap: 0.8rem;
+  min-height: min(58vh, 36rem);
+  max-height: min(68vh, 44rem);
+  overflow: auto;
+  padding: clamp(0.9rem, 2vw, 1.25rem);
+}
+
+.ask-vireli-card .message-bubble {
+  white-space: pre-wrap;
+}
+
+.ask-vireli-card .message-bubble.is-user {
+  align-self: flex-end;
+}
+
+.ask-vireli-card .message-bubble.is-assistant,
+.ask-vireli-card .message-bubble.is-error {
+  align-self: flex-start;
+}
+
+.ask-chip-row,
+.recent-chat-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.ask-vireli-card .chat-input-row {
+  border: var(--day25-border);
+  border-radius: var(--day25-radius);
+}
+
+.settings-menu-list {
+  gap: 0.85rem;
+}
+
+@media (max-width: 1180px) {
+  .day24-layout {
+    grid-template-columns: minmax(12.5rem, 14.5rem) minmax(0, 1fr) !important;
+  }
+
+  .right-routine-sidebar {
+    position: static;
+    grid-column: 1 / -1;
+    min-height: 0;
+  }
+}
+
+@media (min-width: 901px) {
+  .day24-left-sidebar {
+    transform: none !important;
+  }
+}
+
+@media (min-width: 901px) and (max-width: 1180px) {
+  .right-routine-sidebar {
+    position: static !important;
+    grid-column: 1 / -1 !important;
+    width: auto !important;
+    min-height: 0 !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .day25-mobile-toolbar {
+    position: sticky;
+    top: 0.75rem;
+    z-index: 45;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.7rem;
+    border: var(--day25-border);
+    border-radius: var(--day25-radius);
+    background: rgba(255, 255, 255, 0.94);
+    box-shadow: 0 14px 28px rgba(15, 23, 42, 0.12);
+  }
+
+  .day25-mobile-toolbar span {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--red-deep);
+    font-weight: 950;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .day24-layout {
+    display: block !important;
+    grid-template-columns: 1fr !important;
+  }
+
+  .day24-left-sidebar,
+  .right-routine-sidebar {
+    position: fixed !important;
+    top: 0;
+    bottom: 0;
+    z-index: 70;
+    width: min(86vw, 21rem);
+    min-height: 100vh;
+    overflow-y: auto;
+    border-radius: 0 !important;
+    transition: transform var(--day25-motion);
+  }
+
+  .day24-left-sidebar {
+    left: 0;
+    transform: translateX(-105%);
+  }
+
+  .day24-left-sidebar.is-open {
+    transform: translateX(0);
+  }
+
+  .day24-left-sidebar.is-mobile-closed {
+    transform: translateX(-105%);
+  }
+
+  .right-routine-sidebar {
+    right: 0;
+    transform: translateX(105%);
+  }
+
+  .right-routine-sidebar.is-mobile-open {
+    transform: translateX(0);
+  }
+
+  .content-panel {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .dashboard-screen {
+    overflow-x: hidden;
+  }
+
+  .home-welcome-card {
+    min-height: 18rem;
+  }
+
+  .month-calendar-card {
+    padding: 0.85rem;
+  }
+
+  .month-calendar-grid {
+    gap: 0.4rem;
+  }
+
+  .month-date-cell {
+    min-height: 6rem;
+    padding: 0.48rem;
+  }
+
+  .day25-expandable-date.is-expanded {
+    grid-column: 1 / -1;
+    min-height: 12rem;
+  }
+
+  .month-event-chip {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .chat-input-row {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-input-row .dictation-control,
+  .chat-input-row .dictation-button,
+  .chat-input-row .primary-button,
+  .chat-input-row .secondary-button {
+    width: 100%;
+  }
+
+  .routine-daily-row,
+  .routine-activity-row,
+  .settings-class-row,
+  .settings-action-row,
+  .card-footer-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 420px) {
+  .day25-mobile-toolbar {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .day25-mobile-toolbar span {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .day25-mobile-toolbar button:first-child {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .day25-mobile-toolbar button:last-child {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .message-bubble {
+    max-width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-inline-error,
+  .email-auth-message,
+  .status-banner,
+  .routine-meaning-panel,
+  .routine-flow-card,
+  .right-routine-item,
+  .expanded-date-content {
+    animation: none;
+  }
+
+  .day24-left-sidebar,
+  .right-routine-sidebar,
+  .day25-expandable-date {
+    transition: none;
   }
 }

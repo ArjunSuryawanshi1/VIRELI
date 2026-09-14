@@ -28,8 +28,6 @@ const ROUTINE_STORAGE_KEY = "vireli.routine.v1";
 const THOUGHT_STORAGE_KEY = "vireli.thoughts.v1";
 const CONSISTENCY_STORAGE_KEY = "vireli.consistency.v1";
 const SIDEBAR_STORAGE_KEY = "vireli.sidebarState.v1";
-const EMAIL_AUTH_CODE_LENGTH = 6;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const DEFAULT_CLASS_OPTIONS = [
   { id: "math", label: "Math" },
@@ -153,7 +151,6 @@ const EMPTY_THOUGHT_DRAFT = "";
 const EMPTY_CALENDAR_PREFERENCES = {
   remindersEnabled: true,
   reminderTiming: "At planned time",
-  noGuiltLanguage: true,
 };
 
 const EMPTY_FEEDBACK_DRAFT = {
@@ -176,7 +173,7 @@ function getBlankSetupRoutineDraft(baseRoutine = EMPTY_ROUTINE_DRAFT) {
   };
 }
 
-const APP_VERSION = "day24-right-routine-cleanup-20260908";
+const APP_VERSION = "day25-responsive-routine-calendar-auth-20260914-v2";
 const INTRO_ANIMATION_SECONDS = 1.35;
 const INTRO_SCREEN_DURATION_MS = 3200;
 const THEME_TRANSITION_DURATION_MS = 2000;
@@ -639,7 +636,7 @@ function normalizeRoutineEntry(entry = {}) {
       };
     })
     .filter((item) => item.name || item.durationMinutes || item.usualTime)
-    .slice(0, 8);
+    .slice(0, 2);
   const routineCollections = normalizeRoutineCollections(
     Array.isArray(entry.routineCollections) && entry.routineCollections.length
       ? entry.routineCollections
@@ -686,10 +683,10 @@ function normalizeRoutineCollections(collections = []) {
           flexible: activity.fixed === false || Boolean(activity.flexible),
           active: activity.active !== false,
         }))
-        .slice(0, 12),
+        .slice(0, 2),
     }))
     .filter((collection) => collection.name || collection.activities.length)
-    .slice(0, 3);
+    .slice(0, 1);
 }
 
 function loadRoutine() {
@@ -728,7 +725,12 @@ function saveRoutine(routineDraft) {
         activityType: String(item.activityType || "").trim(),
         active: item.active !== false,
       }))
-      .filter((item) => item.name || item.durationMinutes || item.usualTime),
+      .filter((item) => item.name || item.durationMinutes || item.usualTime)
+      .filter(
+        (item, index, items) =>
+          !item.name ||
+          items.findIndex((candidate) => candidate.name.toLowerCase() === item.name.toLowerCase()) === index,
+      ),
     routineCollections: normalizeRoutineCollections(routineDraft.routineCollections || []),
     mealTimes: [],
     preferredDailyWorkloadMinutes: String(routineDraft.preferredDailyWorkloadMinutes || "").trim(),
@@ -3825,12 +3827,13 @@ function SetupAboutScreen({
   onProfileDraftChange,
   onContinue,
 }) {
-  const [aboutName, setAboutName] = useState(profileDraft.name || "");
+  const setupName = profileDraft.guest && profileDraft.name === "Guest" ? "" : profileDraft.name || "";
+  const [aboutName, setAboutName] = useState(setupName);
   const canContinue = Boolean(aboutName.trim());
 
   useEffect(() => {
-    setAboutName(profileDraft.name || "");
-  }, [profileDraft.name]);
+    setAboutName(profileDraft.guest && profileDraft.name === "Guest" ? "" : profileDraft.name || "");
+  }, [profileDraft.guest, profileDraft.name]);
 
   function updateName(value) {
     setAboutName(value);
@@ -4433,15 +4436,6 @@ function AccountScreen({
                 </form>
               `}
 
-          ${!isChoiceStep
-            ? html`
-                <div className="vireli-account-secondary">
-                  <button type="button" className="text-link-button account-guest-button" onClick=${onContinueAsGuest} disabled=${isBusy}>
-                    Continue as guest
-                  </button>
-                </div>
-              `
-            : null}
         </${motion.div}>
       </div>
     </${motion.section}>
@@ -4462,6 +4456,7 @@ function RoutineTab({
   onRoutineActivityRemove,
   onSaveRoutine,
 }) {
+  const [meaningOpen, setMeaningOpen] = useState(false);
   const visibleActivities = (Array.isArray(routineDraft.dailyActivities) && routineDraft.dailyActivities.length
     ? routineDraft.dailyActivities
     : [{ id: "routine-draft-first", name: "", durationMinutes: "", usualTime: "", days: "Every day", fixed: false }]
@@ -4481,13 +4476,42 @@ function RoutineTab({
       <div className="tab-heading">
         <div>
           <p className="eyebrow">Your Routine</p>
-          <h1 className="font-display">What do you want to do every day?</h1>
+          <h1 className="font-display">Your Routine</h1>
           <p className="tab-heading-lead">Choose one or two daily activities you can realistically keep doing. VIRELI uses them when planning your day.</p>
         </div>
         <span className="date-chip">${savedRoutineCount} / 2 routines</span>
       </div>
 
       <article className="feature-card routine-simple-card">
+        <div className="routine-purpose-message">
+          <div>
+            <p className="eyebrow">Purpose</p>
+            <h2 className="font-display">Do something everyday which gives you purpose.</h2>
+          </div>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick=${() => setMeaningOpen((isOpen) => !isOpen)}
+            aria-expanded=${meaningOpen}
+          >
+            What does this mean?
+          </button>
+          <${AnimatePresence}>
+            ${meaningOpen
+              ? html`
+                  <${motion.p}
+                    className="routine-meaning-panel"
+                    initial=${{ opacity: 0, y: 8, scale: 0.98 }}
+                    animate=${{ opacity: 1, y: 0, scale: 1 }}
+                    exit=${{ opacity: 0, y: 6, scale: 0.98 }}
+                    transition=${{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                  >
+                    Pick the small daily actions that make your day feel grounded, useful, or personally meaningful.
+                  </${motion.p}>
+                `
+              : null}
+          </${AnimatePresence}>
+        </div>
         <div className="daily-activity-list routine-daily-list">
           ${visibleActivities.map(
             (activity, index) => html`
@@ -4908,49 +4932,26 @@ function RoutineTab({
 function RoutineSidebar({
   routineDraft,
   routine,
-  onRoutineQuickAdd,
-  onRoutineActivityRemove,
-  onSaveRoutine,
+  onOpenRoutine,
+  mobileOpen = false,
+  onCloseMobile,
 }) {
   const [routineHelpOpen, setRoutineHelpOpen] = useState(false);
-  const [flowStep, setFlowStep] = useState("overview");
-  const [taskDraft, setTaskDraft] = useState("");
-  const [durationDraft, setDurationDraft] = useState("");
-  const [routineMessage, setRoutineMessage] = useState("");
   const routineItems = (Array.isArray(routineDraft.dailyActivities) ? routineDraft.dailyActivities : [])
     .filter((activity) => String(activity.name || "").trim())
     .slice(0, 2);
-  const canAddMore = routineItems.length < 2;
-
-  function startAddFlow() {
-    if (!canAddMore) {
-      setRoutineMessage("VIRELI keeps your daily routine to two activities so it stays realistic.");
-      return;
-    }
-    setRoutineMessage("");
-    setTaskDraft("");
-    setDurationDraft("");
-    setFlowStep("task");
-  }
-
-  function saveRoutineItem() {
-    const title = taskDraft.trim();
-    if (!title || !durationDraft) {
-      setRoutineMessage("Add a routine task and duration first.");
-      return;
-    }
-    onRoutineQuickAdd(title, durationDraft);
-    setRoutineMessage("Routine saved.");
-    setFlowStep("overview");
-    setTaskDraft("");
-    setDurationDraft("");
-  }
 
   return html`
-    <aside className="surface-panel right-routine-sidebar" aria-label="Your Routine">
+    <aside className=${cx("surface-panel right-routine-sidebar", mobileOpen && "is-mobile-open")} aria-label="Your Routine">
+      <button type="button" className="secondary-button routine-mobile-close is-mobile-only" onClick=${onCloseMobile}>
+        Close
+      </button>
       <div className="right-routine-header">
         <p className="eyebrow">Your Routine</p>
-        <h2 className="font-display">Do something everyday which gives you purpose.</h2>
+        <h2 className="font-display">Purpose</h2>
+        <button type="button" className="primary-button right-routine-open-button" onClick=${onOpenRoutine}>
+          Your Routine
+        </button>
         <button
           type="button"
           className="text-link-button routine-meaning-button"
@@ -4968,75 +4969,21 @@ function RoutineSidebar({
           `
         : null}
 
-      ${flowStep === "overview"
-        ? html`
-            <div className="right-routine-list">
-              ${routineItems.length
-                ? routineItems.map(
-                    (activity, index) => html`
-                      <div key=${activity.id || `right-routine-${index}`} className="right-routine-item">
-                        <div>
-                          <strong>${activity.name}</strong>
-                          <span>${[
-                            activity.durationMinutes ? formatDurationFromMinutes(Number(activity.durationMinutes)) : "",
-                            activity.usualTime ? formatTimeLabel(activity.usualTime) : "Every day",
-                          ].filter(Boolean).join(" · ")}</span>
-                        </div>
-                        <button type="button" className="icon-text-button" onClick=${() => onRoutineActivityRemove(index)}>
-                          Remove
-                        </button>
-                      </div>
-                    `,
-                  )
-                : html`<p className="soft-note-inline">Start with one small routine.</p>`}
-            </div>
-            <button type="button" className="routine-add-button" onClick=${startAddFlow} disabled=${!canAddMore} aria-label="Add routine item">
-              +
-            </button>
-            ${!canAddMore
-              ? html`<p className="soft-note-inline">You can keep up to two daily routine activities.</p>`
-              : null}
-          `
-        : flowStep === "task"
-        ? html`
-            <div className="routine-flow-card">
-              <p className="eyebrow">Routine task</p>
-              <h3 className="font-display">What is the task?</h3>
-              <input
-                className="planning-input"
-                value=${taskDraft}
-                onInput=${(event) => setTaskDraft(event.target.value)}
-                placeholder="Reading, stretching, cleaning..."
-                autoFocus=${true}
-              />
-              <div className="routine-flow-actions">
-                <button type="button" className="secondary-button" onClick=${() => setFlowStep("overview")}>Back</button>
-                <button type="button" className="primary-button" onClick=${() => taskDraft.trim() && setFlowStep("duration")} disabled=${!taskDraft.trim()}>
-                  Continue
-                </button>
-              </div>
-            </div>
-          `
-        : html`
-            <div className="routine-flow-card">
-              <p className="eyebrow">Routine duration</p>
-              <h3 className="font-display">How long does this usually take?</h3>
-              <select className="planning-input" value=${durationDraft} onChange=${(event) => setDurationDraft(event.target.value)}>
-                <option value="">Choose duration</option>
-                ${[5, 10, 15, 20, 30, 45, 60].map(
-                  (minutes) => html`<option key=${minutes} value=${String(minutes)}>${formatDurationFromMinutes(minutes)}</option>`,
-                )}
-              </select>
-              <div className="routine-flow-actions">
-                <button type="button" className="secondary-button" onClick=${() => setFlowStep("task")}>Back</button>
-                <button type="button" className="primary-button" onClick=${saveRoutineItem} disabled=${!durationDraft}>
-                  Save routine
-                </button>
-              </div>
-            </div>
-          `}
-
-      ${routineMessage ? html`<p className="right-routine-message">${routineMessage}</p>` : null}
+      <div className="right-routine-list">
+        ${routineItems.length
+          ? routineItems.map(
+              (activity, index) => html`
+                <div key=${activity.id || `right-routine-${index}`} className="right-routine-item">
+                  <strong>${activity.name}</strong>
+                  <span>${[
+                    activity.durationMinutes ? formatDurationFromMinutes(Number(activity.durationMinutes)) : "",
+                    activity.usualTime ? formatTimeLabel(activity.usualTime) : "Every day",
+                  ].filter(Boolean).join(" · ")}</span>
+                </div>
+              `,
+            )
+          : html`<p className="soft-note-inline">No routine set yet.</p>`}
+      </div>
     </aside>
   `;
 }
@@ -5090,7 +5037,7 @@ function HomeTab({
                 <h2 className="font-display">Set up your routine first</h2>
                 <p>VIRELI needs your normal daily routine before it can properly organize your day.</p>
                 <div className="card-footer-row">
-                  <button type="button" className="primary-button" onClick=${() => document.querySelector(".right-routine-sidebar")?.scrollIntoView({ behavior: "smooth", block: "start" })}>Set Up My Routine</button>
+                  <button type="button" className="primary-button" onClick=${() => onTabChange("routine")}>Set Up My Routine</button>
                 </div>
               `
             : html`
@@ -5803,12 +5750,8 @@ function CalendarTab({
       calendarDate: task.scheduledDate || task.dueDate || "",
     })),
   ];
-  const visibleCalendarItems = calendarItems.filter((item) =>
-    item.calendarDate && item.calendarDate >= today && !item.completed,
-  );
-  const selectedDateValue = selectedDate || today;
-  const selectedDayItems = visibleCalendarItems.filter((item) => item.calendarDate === selectedDateValue);
-  const chronologicalDayItems = getChronologicalDayItems({ routine, homeworkItems, calendarTasks, dateValue: selectedDateValue, savedClasses });
+  const visibleCalendarItems = calendarItems.filter((item) => item.calendarDate && !item.completed);
+  const selectedDateValue = selectedDate || "";
   const todaySummaryItems = getChronologicalDayItems({ routine, homeworkItems, calendarTasks, dateValue: today, savedClasses })
     .filter((item) => item.source !== "free")
     .slice(0, 6);
@@ -5884,19 +5827,33 @@ function CalendarTab({
             )}
             ${monthDates.map((dateInfo) => {
               const itemsForDay = visibleCalendarItems.filter((item) => item.calendarDate === dateInfo.value);
+              const dayFlowItems = getChronologicalDayItems({ routine, homeworkItems, calendarTasks, dateValue: dateInfo.value, savedClasses })
+                .filter((item) => item.source !== "free")
+                .slice(0, 6);
+              const isExpanded = Boolean(selectedDateValue) && dateInfo.value === selectedDateValue;
+              const toggleDate = () => onSelectedDateChange(isExpanded ? "" : dateInfo.value);
               return html`
-                <button
-                  type="button"
+                <div
                   key=${dateInfo.value}
                   className=${cx(
                     "month-date-cell",
+                    "day25-expandable-date",
                     !dateInfo.isCurrentMonth && "is-muted",
                     dateInfo.isToday && "is-today",
-                    dateInfo.value === selectedDateValue && "is-selected",
+                    isExpanded && "is-selected is-expanded",
                     dateInfo.value < today && "is-past",
                   )}
-                  onClick=${() => onSelectedDateChange(dateInfo.value)}
+                  onClick=${toggleDate}
+                  onKeyDown=${(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      toggleDate();
+                    }
+                  }}
+                  role="button"
+                  tabIndex="0"
                   aria-label=${`Select ${formatShortDate(dateInfo.value)}`}
+                  aria-expanded=${isExpanded}
                 >
                   <div className="month-date-head">
                     <span>${dateInfo.day}</span>
@@ -5916,86 +5873,134 @@ function CalendarTab({
                       ? html`<small className="month-more-count">+${itemsForDay.length - 3} more</small>`
                       : null}
                   </div>
-                </button>
+                  <${AnimatePresence}>
+                    ${isExpanded
+                      ? html`
+                          <${motion.div}
+                            className="expanded-date-content"
+                            initial=${{ opacity: 0, y: 8, scale: 0.98 }}
+                            animate=${{ opacity: 1, y: 0, scale: 1 }}
+                            exit=${{ opacity: 0, y: 6, scale: 0.98 }}
+                            transition=${{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                          >
+                            <strong>${formatShortDate(dateInfo.value)}</strong>
+                            ${dayFlowItems.length
+                              ? html`
+                                  <div className="expanded-date-list">
+                                    ${dayFlowItems.map(
+                                      (item) => html`
+                                        <div key=${`expanded-${dateInfo.value}-${item.id}`} className=${cx("expanded-date-item", `is-${item.source}`)}>
+                                          <span>${item.title}</span>
+                                          <small>${[item.timeLabel, item.durationLabel].filter(Boolean).join(" · ")}</small>
+                                        </div>
+                                      `,
+                                    )}
+                                  </div>
+                                `
+                              : html`<p>No scheduled items.</p>`}
+                          </${motion.div}>
+                        `
+                      : null}
+                  </${AnimatePresence}>
+                </div>
               `;
             })}
           </div>
         </${motion.article}>
-        <article className="feature-card selected-day-panel">
-          <div className="card-topline card-topline-simple">
-            <span className="mood-chip">Selected day</span>
-          </div>
-          <h3 className="font-display">${formatShortDate(selectedDateValue)}</h3>
-          ${selectedDayItems.length
-            ? html`
-                <div className="selected-day-list">
-                  ${selectedDayItems.map(
-                    (item) => html`
-                      <div key=${`selected-${item.calendarId}`} className=${cx("selected-day-item", `is-${item.source}`)}>
-                        <div>
-                          <strong>${item.title}</strong>
-                          <span>${[
-                            item.scheduledTime ? formatTimeLabel(item.scheduledTime) : "Any time",
-                            item.sourceLabel,
-                            item.subject,
-                          ].filter(Boolean).join(" · ")}</span>
-                        </div>
-                        <div className="calendar-detail-actions">
-                          ${item.source === "task"
-                            ? html`
-                                <button type="button" className="secondary-button" onClick=${() => onCalendarTaskToggle(item.id)}>
-                                  Done
-                                </button>
-                                <button type="button" className="secondary-button" onClick=${() => onCalendarTaskEdit(item.id)}>
-                                  Edit
-                                </button>
-                              `
-                            : item.source === "homework"
-                              ? html`<button type="button" className="secondary-button" onClick=${() => onHomeworkCompleteToggle(item.id)}>Done</button>`
-                              : null}
-                        </div>
-                      </div>
-                    `,
-                  )}
-                </div>
-              `
-            : html`<p>No tasks are scheduled for this day.</p>`}
-          <div className="calendar-day-focus compact-day-flow">
-            <h4 className="font-display">Day flow</h4>
-            <div className="selected-day-list">
-              ${chronologicalDayItems.slice(0, 8).map(
-                (item) => html`
-                  <div key=${`day-flow-${item.id}`} className=${cx("selected-day-item", `is-${item.source}`)}>
-                    <div>
-                      <strong>${item.title}</strong>
-                      <span>${item.timeLabel} · ${item.durationLabel}</span>
-                    </div>
-                  </div>
-                `,
-              )}
-            </div>
-          </div>
-        </article>
       </div>
     </${motion.section}>
   `;
 }
 
 function AskVireliTab({
+  messages = [],
+  recentAskHistory = [],
+  promptChips = [],
+  chatDraft,
+  isTyping,
+  chatError,
+  onLoadAskHistory,
+  onChatDraftChange,
+  onChatSubmit,
+  onChatRetry,
 }) {
   return html`
     <${motion.section}
       key="ask"
-      className="tab-view coming-soon-view"
+      className="tab-view ask-vireli-view"
       initial=${{ opacity: 0, y: 20 }}
       animate=${{ opacity: 1, y: 0 }}
       exit=${{ opacity: 0, y: -16 }}
       transition=${{ duration: 0.25 }}
     >
-      <div className="coming-soon-card">
-        <p className="eyebrow">Ask VIRELI</p>
-        <h1 className="font-display">COMING SOON</h1>
+      <div className="tab-heading">
+        <div>
+          <p className="eyebrow">Ask VIRELI</p>
+          <h1 className="font-display">Ask VIRELI</h1>
+        </div>
       </div>
+
+      <article className="feature-card ask-vireli-card">
+        ${recentAskHistory.length
+          ? html`
+              <div className="recent-chat-panel">
+                ${recentAskHistory.slice(0, 3).map(
+                  (entry) => html`
+                    <button type="button" key=${entry.id} className="recent-chat-chip" onClick=${() => onLoadAskHistory(entry.id)}>
+                      <span>${getAskHistoryTitle(entry)}</span>
+                      <small>${formatShortDate(entry.updatedAt || entry.createdAt || getDateInputValue())}</small>
+                    </button>
+                  `,
+                )}
+              </div>
+            `
+          : null}
+
+        <div className="chat-shell" aria-live="polite">
+          ${messages.map(
+            (message) => html`
+              <div key=${message.id} className=${cx("message-bubble", message.role === "user" ? "is-user" : "is-assistant")}>
+                ${message.content}
+              </div>
+            `,
+          )}
+          ${isTyping
+            ? html`
+                <div className="message-bubble is-assistant is-typing">
+                  <span></span><span></span><span></span>
+                </div>
+              `
+            : null}
+          ${chatError ? html`<div className="message-bubble is-error">${chatError}</div>` : null}
+        </div>
+
+        ${promptChips.length
+          ? html`
+              <div className="ask-chip-row">
+                ${promptChips.slice(0, 3).map(
+                  (chip) => html`
+                    <button type="button" className="recent-chat-chip" key=${chip} onClick=${() => onChatDraftChange(chip)}>
+                      <span>${chip}</span>
+                    </button>
+                  `,
+                )}
+              </div>
+            `
+          : null}
+
+        <form className="chat-input-row" onSubmit=${onChatSubmit}>
+          <input
+            value=${chatDraft}
+            onInput=${(event) => onChatDraftChange(event.target.value)}
+            placeholder="Ask VIRELI to plan, schedule, move, or explain something"
+          />
+          <${DictationButton} label="Dictate" onTranscript=${onChatDraftChange} />
+          <button type="submit" className="primary-button" disabled=${!String(chatDraft || "").trim() || isTyping}>
+            Send
+          </button>
+          ${chatError ? html`<button type="button" className="secondary-button" onClick=${onChatRetry}>Try again</button>` : null}
+        </form>
+      </article>
     </${motion.section}>
   `;
 }
@@ -6094,7 +6099,6 @@ function SettingsTab({
     { id: "calendar", title: "Calendar", summary: "Month view" },
     { id: "notifications", title: "Notifications", summary: calendarPreferences.remindersEnabled ? "On" : "Off" },
     { id: "privacy", title: "Privacy & Data", summary: "Local storage" },
-    { id: "appearance", title: "Appearance", summary: "Automatic" },
     { id: "security", title: "Security", summary: profile.authMode === "vireli-account" ? "Password" : "Guest" },
   ];
   const activeSection = settingsSections.find((section) => section.id === activeSettingsSection);
@@ -6203,7 +6207,7 @@ function SettingsTab({
     if (activeSettingsSection === "notifications") {
       return html`
         <div className="settings-detail-body">
-          <p>Keep reminders gentle. VIRELI should help you restart, not make you feel guilty.</p>
+          <p>Control whether VIRELI reminders are active on this device.</p>
           <label className="settings-toggle-row">
             <input type="checkbox" checked=${calendarPreferences.remindersEnabled} onChange=${(event) => onCalendarPreferenceChange("remindersEnabled", event.target.checked)} />
             <span>Reminders on</span>
@@ -6221,8 +6225,7 @@ function SettingsTab({
     if (activeSettingsSection === "calendar") {
       return html`
         <div className="settings-detail-body">
-          <p>Calendar shows your month, highlights today, and opens a selected-day task list when you choose a date.</p>
-          <div className="soft-note"><p>Calendar is view-only so schedule data does not get duplicated.</p></div>
+          <p>Calendar shows your month, highlights today, and expands selected dates inside the calendar.</p>
         </div>
       `;
     }
@@ -6252,18 +6255,6 @@ function SettingsTab({
         <div className="settings-detail-body">
           <p>VIRELI stores your schedule, tasks, check-ins, routine, feedback, and personalization data on this device so planning can keep working between visits.</p>
           <div className="soft-note"><p>VIRELI keeps the visible account flow simple and does not connect to outside calendars or inboxes.</p></div>
-        </div>
-      `;
-    }
-
-    if (activeSettingsSection === "appearance") {
-      return html`
-        <div className="settings-detail-body">
-          <p>VIRELI keeps a consistent red-and-white look. Mood changes recommendations, not the visual theme.</p>
-          <label className="settings-toggle-row">
-            <input type="checkbox" checked=${calendarPreferences.noGuiltLanguage} onChange=${(event) => onCalendarPreferenceChange("noGuiltLanguage", event.target.checked)} />
-            <span>No guilt language</span>
-          </label>
         </div>
       `;
     }
@@ -6310,7 +6301,7 @@ function SettingsTab({
       <div className="tab-heading">
         <div>
           <p className="eyebrow">Settings</p>
-          <h1 className="font-display">Change the website for you</h1>
+          <h1 className="font-display">Settings</h1>
         </div>
       </div>
 
@@ -6438,9 +6429,11 @@ function DashboardShell({
   onCalendarPreferenceChange,
   onSchedulingPreferenceChange,
 }) {
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [mobileRoutineOpen, setMobileRoutineOpen] = useState(false);
   let activeView = null;
   const primaryNavItems = getPrimaryNavItems();
-  const pageLabel = [...NAV_ITEMS, SETTINGS_NAV_ITEM].find((item) => item.id === activeTab)?.label || "Home";
+  const pageLabel = [...NAV_ITEMS, { id: "routine", label: "Your Routine" }, SETTINGS_NAV_ITEM].find((item) => item.id === activeTab)?.label || "Home";
   const askPromptChips = getAskPromptChips({ routine, homeworkItems, calendarTasks, mood: moodSelection });
 
   if (activeTab === "home") {
@@ -6458,6 +6451,23 @@ function DashboardShell({
         onHomeworkCompleteToggle=${onHomeworkCompleteToggle}
         onHomeworkReschedule=${onHomeworkReschedule}
         onHomeworkDelete=${onHomeworkDelete}
+      />
+    `;
+  } else if (activeTab === "routine") {
+    activeView = html`
+      <${RoutineTab}
+        routineDraft=${routineDraft}
+        routine=${routine}
+        homeworkItems=${homeworkItems}
+        calendarTasks=${calendarTasks}
+        onRoutineChange=${onRoutineChange}
+        onRoutineWorkloadSelect=${onRoutineWorkloadSelect}
+        onRoutineIntervalSelect=${onRoutineIntervalSelect}
+        onRoutineActivityChange=${onRoutineActivityChange}
+        onRoutineActivityAdd=${onRoutineActivityAdd}
+        onRoutineQuickAdd=${onRoutineQuickAdd}
+        onRoutineActivityRemove=${onRoutineActivityRemove}
+        onSaveRoutine=${onSaveRoutine}
       />
     `;
   } else if (activeTab === "assignments") {
@@ -6568,8 +6578,26 @@ function DashboardShell({
       <${CircleBackdrop} />
 
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-[1480px] flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
+        <div className="day25-mobile-toolbar is-mobile-only">
+          <button type="button" className="secondary-button" onClick=${() => setMobileNavOpen(true)}>
+            Menu
+          </button>
+          <span className="font-display">${pageLabel}</span>
+          <button type="button" className="secondary-button" onClick=${() => setMobileRoutineOpen(true)}>
+            Routine
+          </button>
+        </div>
+        ${(mobileNavOpen || mobileRoutineOpen)
+          ? html`<button type="button" className="day25-mobile-scrim is-mobile-only" aria-label="Close mobile panels" onClick=${() => {
+              setMobileNavOpen(false);
+              setMobileRoutineOpen(false);
+            }}></button>`
+          : null}
         <div className="dashboard-layout has-sidebar day24-layout">
-          <aside className="surface-panel sidebar-panel app-sidebar is-open day24-left-sidebar">
+          <aside className=${cx("surface-panel sidebar-panel app-sidebar day24-left-sidebar", mobileNavOpen ? "is-open" : "is-mobile-closed")}>
+            <button type="button" className="secondary-button sidebar-mobile-close is-mobile-only" onClick=${() => setMobileNavOpen(false)}>
+              Close
+            </button>
             <div className="sidebar-head">
               <div>
                 <div className="sidebar-logo-lockup">
@@ -6588,6 +6616,7 @@ function DashboardShell({
                     className=${cx("nav-button", activeTab === item.id && "is-active")}
                     onClick=${() => {
                       onTabChange(item.id);
+                      setMobileNavOpen(false);
                     }}
                   >
                     <span className="nav-label">${item.label}</span>
@@ -6599,7 +6628,10 @@ function DashboardShell({
               <button
                 type="button"
                 className=${cx("nav-button settings-nav-button", activeTab === "settings" && "is-active")}
-                onClick=${() => onTabChange("settings")}
+                onClick=${() => {
+                  onTabChange("settings");
+                  setMobileNavOpen(false);
+                }}
               >
                 <span aria-hidden="true">⚙</span>
                 <span className="nav-label">Settings</span>
@@ -6614,9 +6646,12 @@ function DashboardShell({
           <${RoutineSidebar}
             routineDraft=${routineDraft}
             routine=${routine}
-            onRoutineQuickAdd=${onRoutineQuickAdd}
-            onRoutineActivityRemove=${onRoutineActivityRemove}
-            onSaveRoutine=${onSaveRoutine}
+            mobileOpen=${mobileRoutineOpen}
+            onCloseMobile=${() => setMobileRoutineOpen(false)}
+            onOpenRoutine=${() => {
+              onTabChange("routine");
+              setMobileRoutineOpen(false);
+            }}
           />
         </div>
 
@@ -6663,17 +6698,6 @@ function App() {
     error: "",
     message: "",
   });
-  const [recoveryOpen, setRecoveryOpen] = useState(false);
-  const [emailAuthStep, setEmailAuthStep] = useState("email");
-  const [emailAuthEmail, setEmailAuthEmail] = useState("");
-  const [emailAuthCode, setEmailAuthCode] = useState("");
-  const [emailAuthMode, setEmailAuthMode] = useState("signin");
-  const [emailAuthStatus, setEmailAuthStatus] = useState("idle");
-  const [emailAuthError, setEmailAuthError] = useState("");
-  const [emailAuthMessage, setEmailAuthMessage] = useState("");
-  const [googleClientId, setGoogleClientId] = useState("");
-  const [googleAuthStatus, setGoogleAuthStatus] = useState("unconfigured");
-  const [googleAuthError, setGoogleAuthError] = useState("");
   const [routine, setRoutine] = useState(loadRoutine);
   const [routineDraft, setRoutineDraft] = useState(loadRoutine);
   const [isTyping, setIsTyping] = useState(false);
@@ -6832,7 +6856,7 @@ function App() {
   }, [profile]);
 
   useEffect(() => {
-    const visibleIds = getPrimaryNavItems().map((item) => item.id);
+    const visibleIds = [...getPrimaryNavItems().map((item) => item.id), "routine"];
     if (!visibleIds.includes(activeTab) && activeTab !== "settings") {
       setActiveTab("home");
     }
@@ -6862,8 +6886,8 @@ function App() {
           ...profile,
           connected: true,
           guest: false,
-          name: session.user.name || session.user.username || session.user.email || profile.name || "",
-          email: session.user.email || profile.email || "",
+          name: session.user.name || session.user.username || profile.name || "",
+          email: "",
           username: session.user.username || profile.username || "",
           authMode: session.user.authMode || "vireli-account",
           setupComplete: Boolean(profile.setupComplete),
@@ -6948,7 +6972,7 @@ function App() {
 
   function handleSetupAboutContinue(aboutDraft = profileDraft) {
     advanceSetupStep(2, {
-      name: aboutDraft.name.trim(),
+      name: aboutDraft.name,
     });
   }
 
@@ -7037,17 +7061,9 @@ function App() {
 
   async function handleAccountUsernameContinue(event) {
     event?.preventDefault?.();
-    const username = accountUsername.trim();
-    if (!username) {
+    const username = accountUsername;
+    if (!username.trim()) {
       setAccountError("Enter a username to continue.");
-      return;
-    }
-    if (username.length < 3) {
-      setAccountError("Use at least 3 characters for your username.");
-      return;
-    }
-    if (!/^[a-z0-9._-]+$/i.test(username)) {
-      setAccountError("Use only letters, numbers, dots, dashes, or underscores.");
       return;
     }
     if (accountAuthMode === "create" && /^https?:$/.test(window.location.protocol)) {
@@ -7093,10 +7109,10 @@ function App() {
   async function handlePasswordSubmit(event) {
     event?.preventDefault?.();
 
-    if (passwordDraft.newPassword.length < 8) {
+    if (passwordDraft.newPassword.length < 6) {
       setPasswordDraft((currentDraft) => ({
         ...currentDraft,
-        error: "Use at least 8 characters for your new password.",
+        error: "Use at least 6 characters for your new password.",
         message: "",
       }));
       return;
@@ -7170,17 +7186,18 @@ function App() {
     });
   }
 
-  function completeAuthenticatedProfile(user, fallbackAuthMode = "email") {
+  function completeAuthenticatedProfile(user, fallbackAuthMode = "vireli-account") {
     const now = new Date().toISOString();
     const authMode = user.authMode || fallbackAuthMode;
     const nextProfile = {
       ...EMPTY_PROFILE,
       connected: true,
       guest: false,
-      name: user.name || user.email?.split("@")?.[0] || "VIRELI user",
-      email: user.email || "",
+      name: user.name || user.username || "VIRELI user",
+      email: "",
+      username: user.username || "",
       picture: user.picture || "",
-      googleSub: user.googleSub || "",
+      googleSub: "",
       password: "",
       authMode,
       classSetupSkipped: profile.classSetupSkipped,
@@ -7207,61 +7224,18 @@ function App() {
     setLaunchSetupComplete(false);
   }
 
-  function handleAccountSubmit(event, authMode = "signin") {
-    event?.preventDefault?.();
-
-    const email = profileDraft.email.trim();
-    const password = profileDraft.password.trim();
-
-    if (!email || !password) {
-      return;
-    }
-
-    const now = new Date().toISOString();
-    const nextProfile = {
-      ...EMPTY_PROFILE,
-      connected: true,
-      guest: false,
-      name: email.split("@")[0] || "VIRELI user",
-      email,
-      password: "",
-      authMode: `local-${authMode}`,
-      classSetupSkipped: profile.classSetupSkipped,
-      routineSetupSkipped: profile.routineSetupSkipped,
-      primaryUse: profile.primaryUse,
-      setupComplete: Boolean(profile.setupComplete),
-      setupStep: profile.setupComplete ? 2 : Math.max(1, Math.min(2, Number(profile.setupStep || 1))),
-      timezone: profile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
-      schedulingPreferences: {
-        ...EMPTY_PROFILE.schedulingPreferences,
-        ...(profile.schedulingPreferences || {}),
-      },
-      createdAt: profile.createdAt || now,
-      updatedAt: now,
-    };
-
-    const nextDraft = { ...nextProfile };
-    setProfile(nextProfile);
-    setProfileDraft(nextDraft);
-    setRoutineDraft(getBlankSetupRoutineDraft(routine));
-    setProfileStepComplete(true);
-    setMoodCheckInComplete(false);
-    setLaunchSetupStep(1);
-    setLaunchSetupComplete(false);
-  }
-
   async function handleVireliAccountSubmit(event) {
     event?.preventDefault?.();
 
-    const name = accountUsername.trim();
+    const name = accountUsername;
 
-    if (!name) {
+    if (!name.trim()) {
       setAccountError("Enter a username to create your VIRELI account.");
       return;
     }
 
-    if (accountAuthMode === "create" && accountPassword.length < 8) {
-      setAccountError("Use at least 8 characters for your password.");
+    if (accountAuthMode === "create" && accountPassword.length < 6) {
+      setAccountError("Use at least 6 characters for your password.");
       return;
     }
 
@@ -7307,47 +7281,6 @@ function App() {
     }
   }
 
-  function handleLocalOnlyAccountSubmit() {
-    const name = profileDraft.name.trim();
-    const now = new Date().toISOString();
-
-    const nextProfile = {
-      ...EMPTY_PROFILE,
-      connected: true,
-      guest: false,
-      name,
-      email: "",
-      password: "",
-      authMode: "vireli-local-account",
-      classSetupSkipped: profile.classSetupSkipped,
-      routineSetupSkipped: profile.routineSetupSkipped,
-      primaryUse: profile.primaryUse,
-      setupComplete: Boolean(profile.setupComplete),
-      setupStep: profile.setupComplete ? 2 : Math.max(1, Math.min(2, Number(profile.setupStep || 1))),
-      timezone: profile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
-      schedulingPreferences: {
-        ...EMPTY_PROFILE.schedulingPreferences,
-        ...(profile.schedulingPreferences || {}),
-      },
-      createdAt: profile.createdAt || now,
-      updatedAt: now,
-    };
-
-    const nextDraft = { ...nextProfile };
-    setProfile(nextProfile);
-    setProfileDraft(nextDraft);
-    setRoutineDraft(getBlankSetupRoutineDraft(routine));
-    setProfileStepComplete(true);
-    setMoodCheckInComplete(false);
-    setLaunchSetupStep(1);
-    setLaunchSetupComplete(false);
-    setAccountStep("choice");
-    setAccountUsername("");
-    setAccountPassword("");
-    setAccountPasswordConfirm("");
-    setAccountError("");
-  }
-
   function handleSaveProfileSettings() {
     const now = new Date().toISOString();
     setProfile((currentProfile) => {
@@ -7363,225 +7296,13 @@ function App() {
     });
   }
 
-  function focusVerificationCodeBox(index) {
-    const inputs = document.querySelectorAll(".verification-code-box");
-    inputs[Math.max(0, Math.min(index, EMAIL_AUTH_CODE_LENGTH - 1))]?.focus();
-  }
-
-  function handleEmailChange(value) {
-    setEmailAuthEmail(value);
-    setEmailAuthError("");
-    setEmailAuthMessage("");
-  }
-
-  function handleEmailModeChange(mode) {
-    setEmailAuthMode(mode);
-    setEmailAuthError("");
-    setEmailAuthMessage(mode === "signup" ? "Create account uses the same secure email code." : "");
-  }
-
-  async function requestEmailCode(route, successMessage) {
-    const email = emailAuthEmail.trim().toLowerCase();
-
-    if (!EMAIL_PATTERN.test(email)) {
-      setEmailAuthError("Enter a valid email address.");
-      setEmailAuthMessage("");
-      return false;
-    }
-
-    setEmailAuthStatus(route.includes("resend") ? "resending" : "sending");
-    setEmailAuthError("");
-    setEmailAuthMessage("");
-
-    try {
-      const response = await fetch(route, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({ email, mode: emailAuthMode }),
-      });
-      const payload = await response.json().catch(() => ({}));
-
-      if (!response.ok || !payload.ok) {
-        throw new Error(payload.error || "We couldn’t send a code right now.");
-      }
-
-      setEmailAuthEmail(payload.email || email);
-      setEmailAuthCode("");
-      setEmailAuthStep("code");
-      setEmailAuthMessage(successMessage || payload.message || "A verification code has been sent.");
-      return true;
-    } catch (error) {
-      setEmailAuthError(error.message || "We couldn’t send a code right now.");
-      return false;
-    } finally {
-      setEmailAuthStatus("idle");
-    }
-  }
-
-  function handleEmailContinue(event) {
-    event?.preventDefault?.();
-    requestEmailCode("/api/auth/email/start", "A verification code has been sent.");
-  }
-
-  function handleEmailResend() {
-    requestEmailCode("/api/auth/email/resend", "A new code has been sent.");
-  }
-
-  async function handleEmailVerify(event) {
-    event?.preventDefault?.();
-    const email = emailAuthEmail.trim().toLowerCase();
-    const code = emailAuthCode.replace(/\D/g, "").slice(0, EMAIL_AUTH_CODE_LENGTH);
-
-    if (code.length !== EMAIL_AUTH_CODE_LENGTH) {
-      setEmailAuthError("Enter the 6-digit code.");
-      setEmailAuthMessage("");
-      return;
-    }
-
-    setEmailAuthStatus("verifying");
-    setEmailAuthError("");
-    setEmailAuthMessage("");
-
-    try {
-      const response = await fetch("/api/auth/email/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({ email, code }),
-      });
-      const payload = await response.json().catch(() => ({}));
-
-      if (!response.ok || !payload.authenticated || !payload.user) {
-        throw new Error(payload.error || "That code isn’t correct. Try again.");
-      }
-
-      completeAuthenticatedProfile(payload.user, "email");
-      setEmailAuthStatus("idle");
-    } catch (error) {
-      setEmailAuthError(error.message || "That code isn’t correct. Try again.");
-      setEmailAuthStatus("idle");
-    }
-  }
-
-  function handleEmailCodeChange(index, value) {
-    const digits = String(value || "").replace(/\D/g, "");
-    if (!digits) {
-      setEmailAuthCode((currentCode) => {
-        const codeDigits = currentCode.padEnd(EMAIL_AUTH_CODE_LENGTH, " ").split("");
-        codeDigits[index] = " ";
-        return codeDigits.join("").slice(0, EMAIL_AUTH_CODE_LENGTH);
-      });
-      return;
-    }
-
-    if (digits.length > 1) {
-      const nextCode = digits.slice(0, EMAIL_AUTH_CODE_LENGTH).padEnd(EMAIL_AUTH_CODE_LENGTH, " ");
-      setEmailAuthCode(nextCode);
-      window.setTimeout(() => focusVerificationCodeBox(digits.length), 0);
-      return;
-    }
-
-    setEmailAuthCode((currentCode) => {
-      const codeDigits = currentCode.padEnd(EMAIL_AUTH_CODE_LENGTH, " ").split("");
-      codeDigits[index] = digits;
-      return codeDigits.join("").slice(0, EMAIL_AUTH_CODE_LENGTH);
-    });
-    window.setTimeout(() => focusVerificationCodeBox(index + 1), 0);
-  }
-
-  function handleEmailCodeKeyDown(event, index) {
-    if (event.key === "Backspace" && !event.currentTarget.value && index > 0) {
-      event.preventDefault();
-      setEmailAuthCode((currentCode) => {
-        const codeDigits = currentCode.padEnd(EMAIL_AUTH_CODE_LENGTH, " ").split("");
-        codeDigits[index - 1] = " ";
-        return codeDigits.join("").slice(0, EMAIL_AUTH_CODE_LENGTH);
-      });
-      window.setTimeout(() => focusVerificationCodeBox(index - 1), 0);
-    }
-
-    if (event.key === "ArrowLeft" && index > 0) {
-      event.preventDefault();
-      focusVerificationCodeBox(index - 1);
-    }
-
-    if (event.key === "ArrowRight" && index < EMAIL_AUTH_CODE_LENGTH - 1) {
-      event.preventDefault();
-      focusVerificationCodeBox(index + 1);
-    }
-  }
-
-  function handleEmailCodePaste(event) {
-    const digits = event.clipboardData?.getData("text")?.replace(/\D/g, "").slice(0, EMAIL_AUTH_CODE_LENGTH) || "";
-    if (!digits) {
-      return;
-    }
-
-    event.preventDefault();
-    setEmailAuthCode(digits.padEnd(EMAIL_AUTH_CODE_LENGTH, " "));
-    window.setTimeout(() => focusVerificationCodeBox(digits.length), 0);
-  }
-
-  function handleEmailUseDifferentEmail() {
-    setEmailAuthStep("email");
-    setEmailAuthCode("");
-    setEmailAuthError("");
-    setEmailAuthMessage("");
-  }
-
-  async function handleGoogleCredential(response) {
-    const credential = String(response?.credential || "").trim();
-
-    if (!credential) {
-      setGoogleAuthError("Google sign-in did not return a credential. Try again.");
-      return;
-    }
-
-    setGoogleAuthError("");
-    setGoogleAuthStatus("verifying");
-
-    try {
-      const authResponse = await fetch("/api/auth/google", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({ credential }),
-      });
-      const authPayload = await authResponse.json().catch(() => ({}));
-
-      if (!authResponse.ok || !authPayload.authenticated || !authPayload.user) {
-        throw new Error(authPayload.error || "Google sign-in did not work. Please try again.");
-      }
-
-      completeAuthenticatedProfile(authPayload.user, "google-gis");
-      setGoogleAuthStatus("ready");
-    } catch (error) {
-      setGoogleAuthStatus(googleClientId ? "ready" : "unconfigured");
-      setGoogleAuthError(error.message || "Google sign-in did not work. Please try again.");
-    }
-  }
-
-  function handleGoogleFallbackClick() {
-    if (googleAuthStatus === "needs-server") {
-      setGoogleAuthError("Open VIRELI through http://localhost:8001 so Google sign-in can load its configuration.");
-      return;
-    }
-
-    setGoogleAuthError("Set VIRELI_GOOGLE_CLIENT_ID on the server to enable existing Google account sign-in.");
-  }
-
-  function handleForgotPassword() {
-    setRecoveryOpen((currentOpen) => !currentOpen);
-  }
-
   function handleContinueAsGuest() {
     const now = new Date().toISOString();
     const nextProfile = {
       ...EMPTY_PROFILE,
       connected: false,
       guest: true,
-      name: "Guest",
+      name: "",
       authMode: "guest",
       classSetupSkipped: profile.classSetupSkipped,
       routineSetupSkipped: profile.routineSetupSkipped,

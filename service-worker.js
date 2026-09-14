@@ -1,9 +1,9 @@
-const VIRELI_CACHE = "vireli-day24-right-routine-cleanup-shell-v1";
+const VIRELI_CACHE = "vireli-day25-responsive-routine-calendar-auth-shell-v2";
 const VIRELI_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=day24-right-routine-cleanup-20260908",
-  "./script.js?v=day24-right-routine-cleanup-20260908",
+  "./styles.css?v=day25-responsive-routine-calendar-auth-20260914-v2",
+  "./script.js?v=day25-responsive-routine-calendar-auth-20260914-v2",
   "./manifest.webmanifest",
   "./icons/vireli-icon.svg",
 ];

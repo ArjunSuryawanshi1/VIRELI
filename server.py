@@ -239,21 +239,15 @@ def upsert_email_user(email):
 
 
 def normalize_username(username):
-    return " ".join(str(username or "").split()).strip().lower()
+    return str(username or "")
 
 
 def validate_vireli_account(username, password):
-    normalized_username = normalize_username(username)
-    if not normalized_username:
+    username_value = normalize_username(username)
+    if not username_value.strip():
         return False, "Enter a username."
-    if len(normalized_username) < 3:
-        return False, "Use at least 3 characters for your username."
-    if len(normalized_username) > 32:
-        return False, "Use 32 characters or fewer for your username."
-    if not re.match(r"^[a-z0-9._-]+$", normalized_username):
-        return False, "Use only letters, numbers, dots, dashes, or underscores."
-    if len(str(password or "")) < 8:
-        return False, "Use at least 8 characters for your password."
+    if len(str(password or "")) < 6:
+        return False, "Use at least 6 characters for your password."
     return True, ""
 
 
@@ -363,8 +357,8 @@ def login_vireli_user(username, password):
 
 
 def change_vireli_password(user_id, current_password, new_password):
-    if len(str(new_password or "")) < 8:
-        return False, HTTPStatus.BAD_REQUEST, {"error": "Use at least 8 characters for your new password."}
+    if len(str(new_password or "")) < 6:
+        return False, HTTPStatus.BAD_REQUEST, {"error": "Use at least 6 characters for your new password."}
 
     with get_database_connection() as connection:
         row = connection.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
@@ -860,9 +854,7 @@ class VireliRequestHandler(SimpleHTTPRequestHandler):
         if route == "/api/config":
             self.send_json(
                 HTTPStatus.OK,
-                {
-                    "googleClientId": os.environ.get("VIRELI_GOOGLE_CLIENT_ID", "").strip(),
-                },
+                {"authModes": ["vireli-account", "guest"]},
             )
             return
 
