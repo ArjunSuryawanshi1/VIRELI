@@ -5268,7 +5268,6 @@ function HomeTab({
     .slice()
     .sort((a, b) => `${a.scheduledDate || a.dueDate || "9999-12-31"} ${a.scheduledTime || ""}`.localeCompare(`${b.scheduledDate || b.dueDate || "9999-12-31"} ${b.scheduledTime || ""}`));
   const nextTask = sortedTasks[0];
-  const routineReady = hasSavedRoutine(routine);
 
   return html`
     <${motion.section}
@@ -5288,25 +5287,17 @@ function HomeTab({
 
       <div className="home-grid home-day24-grid">
         <article className="feature-card next-task-card home-welcome-card">
-          ${!routineReady
+          <h2 className="font-display">${nextTask ? "Next up" : "Start when you are ready."}</h2>
+          ${nextTask
             ? html`
-                <h2 className="font-display">Set up My Routine first</h2>
-                <p>VIRELI needs your real routine before it can properly organize your day.</p>
-                <div className="card-footer-row">
-                  <button type="button" className="primary-button" onClick=${() => onTabChange("routine")}>Set Up My Routine</button>
+                <p>VIRELI found the next saved item in your day.</p>
+                <div className="home-mini-status">
+                  <strong>${nextTask.title}</strong>
+                  <span>${nextTask.scheduledTime ? `Scheduled ${formatTimeLabel(nextTask.scheduledTime)}` : "Ready to place on your calendar"}</span>
                 </div>
               `
             : html`
-                <h2 className="font-display">My Routine is ready.</h2>
-                <p>Use My Routine to keep your daily anchors updated, and VIRELI will use them when organizing your calendar.</p>
-                ${nextTask
-                  ? html`
-                      <div className="home-mini-status">
-                        <strong>${nextTask.title}</strong>
-                        <span>${nextTask.scheduledTime ? `Scheduled ${formatTimeLabel(nextTask.scheduledTime)}` : "Ready to place on your calendar"}</span>
-                      </div>
-                    `
-                  : null}
+                <p>Your Home stays clear until you add something real. Use the sidebar when you want to open My Routine, Calendar, or Ask VIRELI.</p>
               `}
         </article>
       </div>
