@@ -1,9 +1,9 @@
-const VIRELI_CACHE = "vireli-day26-my-routine-day-plan-shell-v2";
+const VIRELI_CACHE = "vireli-day27-routine-calendar-blockouts-shell-v1";
 const VIRELI_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=day26-my-routine-day-plan-20260914b",
-  "./script.js?v=day26-my-routine-day-plan-20260914b",
+  "./styles.css?v=day27-routine-calendar-blockouts-20260921",
+  "./script.js?v=day27-routine-calendar-blockouts-20260921",
   "./manifest.webmanifest",
   "./icons/vireli-icon.svg",
 ];

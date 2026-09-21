@@ -5663,6 +5663,97 @@ summary:focus-visible {
   padding-bottom: 1rem;
 }
 
+/* Day 27 workspace and in-calendar availability editing. */
+
+.day27-routine-workspace {
+  min-height: 100dvh;
+  background: var(--white);
+  padding: clamp(1rem, 2vw, 2rem);
+}
+
+.day27-workspace-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  max-width: 1600px;
+  margin: 0 auto 1.5rem;
+}
+
+.day27-workspace-header .font-display { font-size: 1.2rem; }
+.day27-workspace-content { max-width: 1600px; margin: 0 auto; }
+.day27-workspace-content .my-routine-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.day27-workspace-content .my-routine-section { min-width: 0; }
+.day27-add-button { min-width: 44px; min-height: 44px; padding: 0; font-size: 1.5rem; }
+.day27-fixed-editor .day27-weekdays { grid-column: 1 / -1; }
+.day27-setup-fields { display: grid; gap: 2rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.day27-setup-fields .field-stack { min-width: 0; gap: 0.55rem; }
+.day27-setup-fields .field-stack > span { font-size: 1.15rem; font-weight: 850; }
+.day27-setup-fields .field-stack > small { color: var(--text-soft); }
+
+.day27-selected-day {
+  display: grid;
+  gap: 0.7rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(var(--accent-deep-rgb), 0.18);
+  border-radius: 0.8rem;
+  background: rgba(255, 255, 255, 0.84);
+}
+.day27-selected-day > strong { color: var(--red-deep); }
+.day27-selected-day p { margin: 0; }
+
+@media (max-width: 760px) {
+  .month-weekday { white-space: nowrap; overflow: hidden; font-size: 0.58rem; letter-spacing: 0; padding-inline: 0; }
+  .month-date-cell { padding: 0.3rem; }
+  .month-date-items { display: flex; flex-wrap: wrap; align-content: start; gap: 0.22rem; }
+  .month-event-chip {
+    display: block;
+    width: 6px;
+    height: 6px;
+    min-height: 0;
+    padding: 0;
+    border-radius: 50%;
+    font-size: 0;
+    line-height: 0;
+    background: var(--red-deep);
+  }
+  .month-more-count { font-size: 0.55rem; }
+}
+.day27-date-button {
+  width: 44px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.day27-date-button:focus-visible { outline: 3px solid var(--red-deep); }
+.day27-blockout-list { display: grid; gap: 0.5rem; }
+.day27-blockout-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.day27-blockout-row span { flex: 1 1 12rem; min-width: 0; overflow-wrap: anywhere; }
+.day27-blockout-add { justify-self: start; }
+.day27-blockout-editor { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.85rem; min-width: 0; padding: 1rem 0; }
+.day27-blockout-editor label { display: grid; gap: 0.35rem; min-width: 0; font-weight: 800; }
+.day27-blockout-editor .weekday-toggle-row,
+.day27-blockout-editor .auth-inline-error,
+.day27-blockout-actions { grid-column: 1 / -1; }
+.day27-blockout-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.day27-coming-soon { display: grid; align-content: center; justify-items: center; min-height: 55vh; text-align: center; }
+.day27-coming-soon h1 { margin: 0; }
+.day27-coming-soon p { color: var(--red-deep); font-weight: 800; }
+
+@media (max-width: 760px) {
+  .day27-workspace-content .my-routine-grid,
+  .day27-setup-fields,
+  .day27-blockout-editor { grid-template-columns: 1fr; }
+  .day27-blockout-editor > * { grid-column: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .day27-routine-workspace, .day27-blockout-editor { animation: none !important; transition: none !important; }
+}
+
 .day24-left-sidebar .sidebar-logo-lockup {
   justify-content: flex-start;
 }
@@ -6492,3 +6583,7 @@ summary:focus-visible {
     transition: none;
   }
 }
+
+.sidebar-settings-slot { border-top: 0; }
+.day25-expandable-date.is-expanded { grid-column: auto; min-height: 118px; }
+@media (max-width: 760px) { .day25-expandable-date.is-expanded { min-height: 6rem; } }

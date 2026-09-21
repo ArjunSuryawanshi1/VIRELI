@@ -28,6 +28,31 @@ const ROUTINE_STORAGE_KEY = "vireli.routine.v1";
 const THOUGHT_STORAGE_KEY = "vireli.thoughts.v1";
 const CONSISTENCY_STORAGE_KEY = "vireli.consistency.v1";
 const SIDEBAR_STORAGE_KEY = "vireli.sidebarState.v1";
+const ACCOUNT_SCOPED_KEYS = new Set([
+  CLASS_STORAGE_KEY, HOMEWORK_STORAGE_KEY, PROFILE_STORAGE_KEY, FEEDBACK_STORAGE_KEY,
+  CALENDAR_TASK_STORAGE_KEY, CALENDAR_PREFERENCES_STORAGE_KEY, ROUTINE_STORAGE_KEY,
+  THOUGHT_STORAGE_KEY, CONSISTENCY_STORAGE_KEY,
+]);
+let activePlannerScope = "";
+
+function scopedStorageKey(key) {
+  if (!ACCOUNT_SCOPED_KEYS.has(key)) return key;
+  return activePlannerScope ? `${key}.${activePlannerScope}` : "";
+}
+
+function activatePlannerScope(scope, username = "", allowMigration = false) {
+  activePlannerScope = scope;
+  if (!allowMigration || !scope.startsWith("account-")) return;
+  const legacyProfile = readPersistentObject(PROFILE_STORAGE_KEY, EMPTY_PROFILE, true);
+  if (!legacyProfile.connected || legacyProfile.guest || legacyProfile.username !== username) return;
+  for (const key of ACCOUNT_SCOPED_KEYS) {
+    const destination = scopedStorageKey(key);
+    if (window.localStorage.getItem(destination) === null) {
+      const legacyValue = window.localStorage.getItem(key);
+      if (legacyValue !== null) window.localStorage.setItem(destination, legacyValue);
+    }
+  }
+}
 
 const DEFAULT_CLASS_OPTIONS = [
   { id: "math", label: "Math" },
@@ -177,7 +202,7 @@ function getBlankSetupRoutineDraft(baseRoutine = EMPTY_ROUTINE_DRAFT) {
   };
 }
 
-const APP_VERSION = "day26-my-routine-day-plan-20260914";
+const APP_VERSION = "day27-routine-calendar-blockouts-20260921";
 const INTRO_ANIMATION_SECONDS = 1.35;
 const INTRO_SCREEN_DURATION_MS = 3200;
 const THEME_TRANSITION_DURATION_MS = 2000;
@@ -437,7 +462,9 @@ function readPersistentArray(storageKey) {
   }
 
   try {
-    const storedValue = window.localStorage.getItem(storageKey);
+    const key = scopedStorageKey(storageKey);
+    if (!key) return [];
+    const storedValue = window.localStorage.getItem(key);
     const parsedValue = storedValue ? JSON.parse(storedValue) : [];
     return Array.isArray(parsedValue) ? parsedValue : [];
   } catch (error) {
@@ -450,16 +477,19 @@ function writePersistentArray(storageKey, items) {
     return;
   }
 
-  window.localStorage.setItem(storageKey, JSON.stringify(items));
+  const key = scopedStorageKey(storageKey);
+  if (key) window.localStorage.setItem(key, JSON.stringify(items));
 }
 
-function readPersistentObject(storageKey, fallbackValue = {}) {
+function readPersistentObject(storageKey, fallbackValue = {}, unscoped = false) {
   if (!canUseLocalStorage()) {
     return fallbackValue;
   }
 
   try {
-    const storedValue = window.localStorage.getItem(storageKey);
+    const key = unscoped ? storageKey : scopedStorageKey(storageKey);
+    if (!key) return fallbackValue;
+    const storedValue = window.localStorage.getItem(key);
     const parsedValue = storedValue ? JSON.parse(storedValue) : fallbackValue;
     return parsedValue && typeof parsedValue === "object" && !Array.isArray(parsedValue)
       ? { ...fallbackValue, ...parsedValue }
@@ -474,7 +504,8 @@ function writePersistentObject(storageKey, value) {
     return;
   }
 
-  window.localStorage.setItem(storageKey, JSON.stringify(value));
+  const key = scopedStorageKey(storageKey);
+  if (key) window.localStorage.setItem(key, JSON.stringify(value));
 }
 
 function loadSidebarState() {
@@ -664,7 +695,7 @@ function normalizeRoutineEntry(entry = {}) {
     .slice(0, 40);
   const blockouts = (Array.isArray(entry.blockouts) ? entry.blockouts : [])
     .map(normalizeBlockout)
-    .filter((blockout) => blockout.startTime && blockout.endTime && blockout.days.length)
+    .filter((blockout) => blockout.startTime && blockout.endTime && (blockout.date || blockout.days.length))
     .slice(0, 60);
   const dayPlans = normalizeDayPlans(entry.dayPlans || {});
 
@@ -714,11 +745,15 @@ function normalizeRoutineCollections(collections = []) {
 }
 
 function normalizeFixedActivity(activity = {}, index = 0) {
+  const days = Array.isArray(activity.days)
+    ? activity.days.map(Number).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
+    : activity.days === "Weekdays" ? [1, 2, 3, 4, 5] : [0, 1, 2, 3, 4, 5, 6];
   return {
     id: activity.id || makeId(`fixed-activity-${index}`),
     name: String(activity.name || activity.label || "").trim(),
     startTime: String(activity.startTime || activity.usualTime || activity.time || "").trim(),
     durationMinutes: String(activity.durationMinutes || activity.duration || "").trim(),
+    days,
     createdAt: activity.createdAt || "",
     updatedAt: activity.updatedAt || "",
   };
@@ -747,6 +782,7 @@ function normalizeBlockout(blockout = {}, index = 0) {
     startTime: String(blockout.startTime || "").trim(),
     endTime: String(blockout.endTime || "").trim(),
     kind: blockout.kind === "available" ? "available" : "unavailable",
+    date: /^\d{4}-\d{2}-\d{2}$/.test(blockout.date || "") ? blockout.date : "",
     days,
     createdAt: blockout.createdAt || "",
     updatedAt: blockout.updatedAt || "",
@@ -779,9 +815,8 @@ function normalizeDayPlans(dayPlans = {}) {
 }
 
 function getRoutineFixedActivities(entry = {}) {
-  const explicit = Array.isArray(entry.fixedActivities) ? entry.fixedActivities : [];
-  if (explicit.length) {
-    return explicit.map(normalizeFixedActivity).filter((activity) => activity.name || activity.startTime || activity.durationMinutes).slice(0, 2);
+  if (Array.isArray(entry.fixedActivities)) {
+    return entry.fixedActivities.map(normalizeFixedActivity).filter((activity) => activity.name || activity.startTime || activity.durationMinutes).slice(0, 2);
   }
   const legacyActivities = Array.isArray(entry.dailyActivities) ? entry.dailyActivities : [];
   return legacyActivities
@@ -798,6 +833,7 @@ function getWeekdayIndexForDate(dateValue = getDateInputValue()) {
 }
 
 function blockoutAppliesToDate(blockout, dateValue = getDateInputValue()) {
+  if (blockout.date) return blockout.date === dateValue;
   const weekdayIndex = getWeekdayIndexForDate(dateValue);
   return Array.isArray(blockout.days) && blockout.days.includes(weekdayIndex);
 }
@@ -822,7 +858,8 @@ function rangesOverlap(aStart, aEnd, bStart, bEnd) {
 function getFixedActivityBlocks(routine = EMPTY_ROUTINE_DRAFT, dateValue = getDateInputValue()) {
   const { wakeMinutes } = getRoutineAwakeRange(routine);
   return (routine.fixedActivities || [])
-    .filter((activity) => activity.name && activity.startTime && Number(activity.durationMinutes) > 0)
+    .filter((activity) => activity.name && activity.startTime && Number(activity.durationMinutes) > 0 &&
+      normalizeFixedActivity(activity).days.includes(getWeekdayIndexForDate(dateValue)))
     .map((activity) => {
       const start = timeToMinutes(activity.startTime);
       if (start === null) {
@@ -897,8 +934,8 @@ function validateRoutineDraft(routineDraft = EMPTY_ROUTINE_DRAFT, options = {}) 
     if (!range || range.endMinutes <= range.startMinutes) {
       return { ok: false, message: "Blockouts need a start time before the end time." };
     }
-    if (!blockout.days.length) {
-      return { ok: false, message: "Choose at least one weekday for each Blockout." };
+    if (!blockout.date && !blockout.days.length) {
+      return { ok: false, message: "Choose a date or at least one weekday for each Blockout." };
     }
   }
 
@@ -908,7 +945,13 @@ function validateRoutineDraft(routineDraft = EMPTY_ROUTINE_DRAFT, options = {}) 
     for (let compareIndex = index + 1; compareIndex < blockouts.length; compareIndex += 1) {
       const other = blockouts[compareIndex];
       const otherRange = getTimeRange(other);
-      const sharedDay = blockout.days.some((day) => other.days.includes(day));
+      const sharedDay = blockout.date && other.date
+        ? blockout.date === other.date
+        : blockout.date
+          ? other.days.includes(getWeekdayIndexForDate(blockout.date))
+          : other.date
+            ? blockout.days.includes(getWeekdayIndexForDate(other.date))
+            : blockout.days.some((day) => other.days.includes(day));
       if (sharedDay && range && otherRange && blockout.kind !== other.kind && rangesOverlap(range.startMinutes, range.endMinutes, otherRange.startMinutes, otherRange.endMinutes)) {
         return { ok: false, message: "Available and Unavailable Blockouts cannot overlap on the same day." };
       }
@@ -922,6 +965,9 @@ function validateRoutineDraft(routineDraft = EMPTY_ROUTINE_DRAFT, options = {}) 
     if (!activity.name || !activity.startTime || !(Number(activity.durationMinutes) > 0)) {
       return { ok: false, message: "Fixed daily activities need a name, start time, and duration." };
     }
+    if (!normalizeFixedActivity(activity).days.length) {
+      return { ok: false, message: "Choose at least one day for each main task." };
+    }
     const activityRange = getTimeRange(activity);
     if (!activityRange) {
       return { ok: false, message: "Fixed daily activities need a valid start time and duration." };
@@ -931,10 +977,27 @@ function validateRoutineDraft(routineDraft = EMPTY_ROUTINE_DRAFT, options = {}) 
         return false;
       }
       const blockoutRange = getTimeRange(blockout);
-      return blockoutRange && rangesOverlap(activityRange.startMinutes, activityRange.endMinutes, blockoutRange.startMinutes, blockoutRange.endMinutes);
+      const activityDays = normalizeFixedActivity(activity).days;
+      const sameDay = blockout.date
+        ? activityDays.includes(getWeekdayIndexForDate(blockout.date))
+        : blockout.days.some((day) => activityDays.includes(day));
+      return sameDay && blockoutRange && rangesOverlap(activityRange.startMinutes, activityRange.endMinutes, blockoutRange.startMinutes, blockoutRange.endMinutes);
     });
     if (conflictingBlockout && (!targetBlockoutId || conflictingBlockout.id === targetBlockoutId || !targetFixedId || activity.id === targetFixedId)) {
       return { ok: false, message: `The fixed activity "${activity.name}" overlaps with an Unavailable Blockout.` };
+    }
+  }
+
+  for (let index = 0; index < fixedActivities.length; index += 1) {
+    const first = fixedActivities[index];
+    const firstRange = getTimeRange(first);
+    if (!firstRange) continue;
+    for (const second of fixedActivities.slice(index + 1)) {
+      const secondRange = getTimeRange(second);
+      if (secondRange && first.days.some((day) => second.days.includes(day)) &&
+          rangesOverlap(firstRange.startMinutes, firstRange.endMinutes, secondRange.startMinutes, secondRange.endMinutes)) {
+        return { ok: false, message: `"${first.name}" and "${second.name}" overlap on a selected day.` };
+      }
     }
   }
 
@@ -968,24 +1031,19 @@ function getAvailableSchedulingWindows(routine = EMPTY_ROUTINE_DRAFT, dateValue 
     baseWindows.push({ startMinutes: cursor, endMinutes: bedMinutes, priority: "normal" });
   }
 
-  const prioritizedWindows = [];
-  availableBlocks.forEach((availableBlock) => {
-    baseWindows.forEach((windowBlock) => {
-      const startMinutes = Math.max(windowBlock.startMinutes, availableBlock.startMinutes);
-      const endMinutes = Math.min(windowBlock.endMinutes, availableBlock.endMinutes);
-      if (endMinutes > startMinutes) {
-        prioritizedWindows.push({ startMinutes, endMinutes, priority: "available" });
-      }
-    });
+  const windows = baseWindows.flatMap((base) => {
+    const boundaries = [base.startMinutes, base.endMinutes, ...availableBlocks.flatMap((block) => [
+      Math.max(base.startMinutes, Math.min(base.endMinutes, block.startMinutes)),
+      Math.max(base.startMinutes, Math.min(base.endMinutes, block.endMinutes)),
+    ])].sort((a, b) => a - b);
+    return boundaries.slice(0, -1).map((startMinutes, index) => ({
+      startMinutes,
+      endMinutes: boundaries[index + 1],
+      priority: availableBlocks.some((block) => block.startMinutes <= startMinutes && block.endMinutes >= boundaries[index + 1])
+        ? "available" : "normal",
+    })).filter((windowBlock) => windowBlock.endMinutes > windowBlock.startMinutes);
   });
-
-  const allWindows = [...prioritizedWindows, ...baseWindows]
-    .filter((windowBlock, index, windows) =>
-      windows.findIndex((candidate) => candidate.startMinutes === windowBlock.startMinutes && candidate.endMinutes === windowBlock.endMinutes && candidate.priority === windowBlock.priority) === index,
-    )
-    .sort((a, b) => (a.priority === "available" ? -1 : 1) - (b.priority === "available" ? -1 : 1) || a.startMinutes - b.startMinutes);
-
-  return allWindows;
+  return windows.sort((a, b) => (a.priority === "available" ? -1 : 1) - (b.priority === "available" ? -1 : 1) || a.startMinutes - b.startMinutes);
 }
 
 function generateDayPlan(routine = EMPTY_ROUTINE_DRAFT, dateValue = getDateInputValue()) {
@@ -1038,25 +1096,24 @@ function generateDayPlan(routine = EMPTY_ROUTINE_DRAFT, dateValue = getDateInput
 function updateMissedDayPlanBlocks(routine = EMPTY_ROUTINE_DRAFT, now = new Date()) {
   const today = getDateInputValue(now);
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
-  const todayBlocks = ((routine.dayPlans || {})[today] || []).map((block) => {
-    const start = timeToMinutes(block.startTime);
-    const end = start === null ? null : start + Number(block.durationMinutes || 0);
-    if (block.status === DAY_PLAN_STATUS.planned && end !== null && end < currentMinutes) {
-      return { ...block, status: DAY_PLAN_STATUS.missed, updatedAt: now.toISOString() };
-    }
-    return block;
-  });
+  const plans = Object.fromEntries(Object.entries(routine.dayPlans || {}).map(([dateValue, blocks]) => [dateValue,
+    blocks.map((block) => {
+      const start = timeToMinutes(block.startTime);
+      const end = start === null ? null : start + Number(block.durationMinutes || 0);
+      if (block.status === DAY_PLAN_STATUS.planned && end !== null && (dateValue < today || (dateValue === today && end < currentMinutes))) {
+        return { ...block, status: DAY_PLAN_STATUS.missed, updatedAt: now.toISOString() };
+      }
+      return block;
+    }),
+  ]));
   return {
     ...routine,
-    dayPlans: {
-      ...(routine.dayPlans || {}),
-      [today]: todayBlocks,
-    },
+    dayPlans: plans,
   };
 }
 
 function loadRoutine() {
-  return updateMissedDayPlanBlocks(normalizeRoutineEntry(readPersistentObject(ROUTINE_STORAGE_KEY, EMPTY_ROUTINE_DRAFT)));
+  return updateMissedDayPlanBlocks(normalizeRoutineEntry(readPersistentObject(ROUTINE_STORAGE_KEY, {})));
 }
 
 function hasSavedRoutine(routine) {
@@ -1111,7 +1168,7 @@ function saveRoutine(routineDraft) {
       .slice(0, 40),
     blockouts: (routineDraft.blockouts || [])
       .map(normalizeBlockout)
-      .filter((item) => item.startTime && item.endTime && item.days.length)
+      .filter((item) => item.startTime && item.endTime && (item.date || item.days.length))
       .slice(0, 60),
     dayPlans: normalizeDayPlans(routineDraft.dayPlans || {}),
     mealTimes: [],
@@ -1717,10 +1774,11 @@ function getTodayScheduleBlocks({
     ...(routine.dailyActivities || []),
     ...collectionActivities,
   ].filter((activity, index, activities) =>
-    activities.findIndex((candidate) => candidate.id === activity.id) === index,
+    activities.findIndex((candidate) => candidate.id === activity.id) === index &&
+    !(routine.fixedActivities || []).some((fixed) => fixed.id === activity.id),
   );
   const routineBlocks = allRoutineActivities
-    .filter((activity) => activity.active !== false)
+    .filter((activity) => activity.active !== false && normalizeFixedActivity(activity).days.includes(getWeekdayIndexForDate(dateValue)))
     .map((activity) => {
       const startMinutes = parseLooseTimeToMinutes(activity.usualTime);
       const duration = Number(activity.durationMinutes);
@@ -4504,9 +4562,8 @@ function SetupScheduleBasicsScreen({
   onRoutineChange,
   onContinue,
 }) {
-  const canContinue = true;
-  const previewRoutine = normalizeRoutineEntry(routineDraft);
-  const schedule = getTodayScheduleBlocks({ routine: previewRoutine, homeworkItems: [], calendarTasks: [] });
+  const canContinue = /^\d{2}:\d{2}$/.test(routineDraft.wakeTime || "") &&
+    /^\d{2}:\d{2}$/.test(routineDraft.bedTime || "") && routineDraft.wakeTime !== routineDraft.bedTime;
 
   return html`
     <${motion.section}
@@ -4530,52 +4587,22 @@ function SetupScheduleBasicsScreen({
             <h2 className="font-display">Set Your Schedule</h2>
           </div>
           <div className="routine-form">
-            <div className="scroll-picker-grid">
-              <div className="setup-picker-card">
-                <${TimeScrollPicker}
-                  label="Wake Time"
-                  help="When do you normally wake up?"
-                  value=${routineDraft.wakeTime}
-                  onChange=${(value) => onRoutineChange("wakeTime", value)}
-                />
-              </div>
-              <div className="setup-picker-card">
-                <${TimeScrollPicker}
-                  label="Sleep Time"
-                  help="When do you normally go to sleep?"
-                  value=${routineDraft.bedTime}
-                  onChange=${(value) => onRoutineChange("bedTime", value)}
-                />
-              </div>
-              <div className="setup-picker-card">
-                <${DurationScrollPicker}
-                  label="Available daily work time"
-                  help="How much task time should VIRELI plan around? If you leave this blank, VIRELI uses 4 hours."
-                  value=${routineDraft.preferredDailyWorkloadMinutes}
-                  options=${DURATION_PICKER_OPTIONS}
-                  onChange=${(value) => onRoutineChange("preferredDailyWorkloadMinutes", value)}
-                />
-              </div>
-            </div>
-            <div className="setup-timeline-preview">
-              <span>${formatTimeLabel(minutesToTimeValue(schedule.wakeMinutes))}</span>
-              <div className="day-chart-track">
-                ${getChartSegments(schedule).map(
-                  (segment) => html`<i key=${segment.id} className=${cx("day-chart-segment", `is-${segment.source}`)} style=${{ width: `${segment.width}%` }}></i>`,
-                )}
-              </div>
-              <span>${formatTimeLabel(minutesToTimeValue(schedule.bedMinutes))}</span>
+            <div className="day27-setup-fields">
+              <label className="field-stack">
+                <span>Wake Time</span>
+                <small>When do you normally wake up?</small>
+                <input className="planning-input" type="time" value=${routineDraft.wakeTime} onInput=${(event) => onRoutineChange("wakeTime", event.target.value)} required />
+              </label>
+              <label className="field-stack">
+                <span>Sleep Time</span>
+                <small>When do you normally go to sleep?</small>
+                <input className="planning-input" type="time" value=${routineDraft.bedTime} onInput=${(event) => onRoutineChange("bedTime", event.target.value)} required />
+              </label>
             </div>
           </div>
-          <${AnimatePresence}>
-            ${canContinue
-              ? html`
-                  <${motion.div} className="mood-control-row" initial=${{ opacity: 0, y: 10 }} animate=${{ opacity: 1, y: 0 }} exit=${{ opacity: 0, y: 8 }}>
-                    <button type="button" className="primary-button" onClick=${onContinue}>Finish Setup</button>
-                  </${motion.div}>
-                `
-              : null}
-          </${AnimatePresence}>
+          <div className="mood-control-row">
+            <button type="button" className="primary-button" onClick=${onContinue} disabled=${!canContinue}>Finish Setup</button>
+          </div>
         </${motion.div}>
       </div>
     </${motion.section}>
@@ -4927,11 +4954,9 @@ function RoutineTab({
   routineValidationMessage = "",
   dayPlanMessage = "",
 }) {
-  const [meaningOpen, setMeaningOpen] = useState(false);
   const today = getDateInputValue();
   const fixedActivities = (routineDraft.fixedActivities || []).slice(0, 2);
   const miscTasks = routineDraft.miscTasks || [];
-  const blockouts = routineDraft.blockouts || [];
   const todayPlan = ((routineDraft.dayPlans || {})[today] || []).map(normalizeDayPlanBlock);
   const fixedCount = fixedActivities.filter((activity) => activity.name).length;
 
@@ -4980,36 +5005,6 @@ function RoutineTab({
     updateMiscTasks(miscTasks.filter((_, taskIndex) => taskIndex !== index));
   }
 
-  function updateBlockouts(nextBlockouts) {
-    onRoutineChange("blockouts", nextBlockouts.map(normalizeBlockout).slice(0, 60));
-  }
-
-  function addBlockout(kind = "unavailable") {
-    updateBlockouts([
-      ...blockouts,
-      normalizeBlockout({ id: makeId("blockout"), startTime: "", endTime: "", kind, days: [1, 2, 3, 4, 5] }),
-    ]);
-  }
-
-  function updateBlockout(index, field, value) {
-    const nextBlockouts = [...blockouts];
-    nextBlockouts[index] = normalizeBlockout({ ...(nextBlockouts[index] || {}), [field]: value }, index);
-    updateBlockouts(nextBlockouts);
-  }
-
-  function toggleBlockoutDay(index, dayIndex) {
-    const blockout = blockouts[index] || {};
-    const currentDays = Array.isArray(blockout.days) ? blockout.days : [];
-    const nextDays = currentDays.includes(dayIndex)
-      ? currentDays.filter((day) => day !== dayIndex)
-      : [...currentDays, dayIndex].sort((a, b) => a - b);
-    updateBlockout(index, "days", nextDays);
-  }
-
-  function removeBlockout(index) {
-    updateBlockouts(blockouts.filter((_, blockoutIndex) => blockoutIndex !== index));
-  }
-
   return html`
     <${motion.section}
       key="routine"
@@ -5023,7 +5018,7 @@ function RoutineTab({
         <div>
           <p className="eyebrow">My Routine</p>
           <h1 className="font-display">My Routine</h1>
-          <p className="tab-heading-lead">Teach VIRELI the steady parts of your day, the flexible tasks you want to fit in, and when you are available or unavailable.</p>
+          <p className="tab-heading-lead">Your recurring activities and flexible tasks.</p>
         </div>
         <span className="date-chip">${fixedCount} / 2 fixed</span>
       </div>
@@ -5035,13 +5030,14 @@ function RoutineTab({
         <article className="feature-card my-routine-section">
           <div className="card-topline card-topline-simple">
             <span className="mood-chip">Fixed Daily Activities</span>
+            <button type="button" className="secondary-button day27-add-button" aria-label="Add main task" title="Add main task" onClick=${addFixedActivity} disabled=${fixedActivities.length >= 2}>+</button>
           </div>
           <h2 className="font-display">Same time every day</h2>
           <p>Choose up to two activities VIRELI should always protect.</p>
           <div className="my-routine-list">
             ${fixedActivities.length
               ? fixedActivities.map((activity, index) => html`
-                  <div key=${activity.id || `fixed-${index}`} className="routine-editor-row">
+                  <div key=${activity.id || `fixed-${index}`} className="routine-editor-row day27-fixed-editor">
                     <label className="field-stack">
                       <span>Activity name</span>
                       <input className="planning-input" value=${activity.name} onInput=${(event) => updateFixedActivity(index, "name", event.target.value)} placeholder="Piano, workout, reading" />
@@ -5058,12 +5054,19 @@ function RoutineTab({
                       </select>
                     </label>
                     <button type="button" className="secondary-button" onClick=${() => removeFixedActivity(index)}>Delete</button>
+                    <div className="weekday-toggle-row day27-weekdays" role="group" aria-label=${`Days for ${activity.name || "main task"}`}>
+                      ${WEEKDAY_LABELS.map((day, dayIndex) => html`
+                        <button key=${`${activity.id}-${day}`} type="button" className=${cx("choice-chip weekday-chip", activity.days?.includes(dayIndex) && "is-selected")}
+                          aria-pressed=${Boolean(activity.days?.includes(dayIndex))}
+                          onClick=${() => {
+                            const days = activity.days || [0, 1, 2, 3, 4, 5, 6];
+                            updateFixedActivity(index, "days", days.includes(dayIndex) ? days.filter((value) => value !== dayIndex) : [...days, dayIndex].sort());
+                          }}>${day}</button>
+                      `)}
+                    </div>
                   </div>
                 `)
               : html`<p className="soft-note-inline">No fixed daily activities yet.</p>`}
-          </div>
-          <div className="card-footer-row">
-            <button type="button" className="secondary-button" onClick=${addFixedActivity} disabled=${fixedActivities.length >= 2}>Add fixed activity</button>
           </div>
           ${fixedActivities.length >= 2 ? html`<p className="soft-note-inline">VIRELI keeps fixed activities to two so the routine stays realistic.</p>` : null}
         </article>
@@ -5071,6 +5074,7 @@ function RoutineTab({
         <article className="feature-card my-routine-section">
           <div className="card-topline card-topline-simple">
             <span className="mood-chip">Miscellaneous Tasks</span>
+            <button type="button" className="secondary-button day27-add-button" aria-label="Add miscellaneous task" title="Add miscellaneous task" onClick=${addMiscTask}>+</button>
           </div>
           <h2 className="font-display">Flexible things to fit in</h2>
           <p>Add tasks without choosing an exact time. VIRELI can place them when you generate a Day Plan.</p>
@@ -5094,59 +5098,6 @@ function RoutineTab({
                   </div>
                 `)
               : html`<p className="soft-note-inline">No miscellaneous tasks yet.</p>`}
-          </div>
-          <div className="card-footer-row">
-            <button type="button" className="secondary-button" onClick=${addMiscTask}>Add miscellaneous task</button>
-          </div>
-        </article>
-
-        <article className="feature-card my-routine-section feature-card-quote-wide">
-          <div className="card-topline card-topline-simple">
-            <span className="mood-chip">Blockouts</span>
-          </div>
-          <h2 className="font-display">Available and unavailable time</h2>
-          <p>Blockouts tell VIRELI where flexible tasks can or cannot go.</p>
-          <div className="my-routine-list">
-            ${blockouts.length
-              ? blockouts.map((blockout, index) => html`
-                  <div key=${blockout.id || `blockout-${index}`} className=${cx("blockout-card", blockout.kind === "available" ? "is-available" : "is-unavailable")}>
-                    <div className="routine-editor-row routine-editor-row-compact">
-                      <label className="field-stack">
-                        <span>Start time</span>
-                        <input className="planning-input" type="time" value=${blockout.startTime} onInput=${(event) => updateBlockout(index, "startTime", event.target.value)} />
-                      </label>
-                      <label className="field-stack">
-                        <span>End time</span>
-                        <input className="planning-input" type="time" value=${blockout.endTime} onInput=${(event) => updateBlockout(index, "endTime", event.target.value)} />
-                      </label>
-                      <label className="field-stack">
-                        <span>Status</span>
-                        <select className="planning-input" value=${blockout.kind} onChange=${(event) => updateBlockout(index, "kind", event.target.value)}>
-                          <option value="available">Available</option>
-                          <option value="unavailable">Unavailable</option>
-                        </select>
-                      </label>
-                      <button type="button" className="secondary-button" onClick=${() => removeBlockout(index)}>Delete</button>
-                    </div>
-                    <div className="weekday-toggle-row" role="group" aria-label="Blockout weekdays">
-                      ${WEEKDAY_LABELS.map((day, dayIndex) => html`
-                        <button
-                          key=${`${blockout.id}-${day}`}
-                          type="button"
-                          className=${cx("choice-chip weekday-chip", blockout.days?.includes(dayIndex) && "is-selected")}
-                          onClick=${() => toggleBlockoutDay(index, dayIndex)}
-                        >
-                          ${day}
-                        </button>
-                      `)}
-                    </div>
-                  </div>
-                `)
-              : html`<p className="soft-note-inline">No Blockouts yet.</p>`}
-          </div>
-          <div className="card-footer-row">
-            <button type="button" className="secondary-button" onClick=${() => addBlockout("available")}>Add Available Blockout</button>
-            <button type="button" className="secondary-button" onClick=${() => addBlockout("unavailable")}>Add Unavailable Blockout</button>
           </div>
         </article>
 
@@ -5192,53 +5143,15 @@ function RoutineSidebar({
   mobileOpen = false,
   onCloseMobile,
 }) {
-  const [routineHelpOpen, setRoutineHelpOpen] = useState(false);
-  const routineItems = (Array.isArray(routineDraft.fixedActivities) ? routineDraft.fixedActivities : [])
-    .filter((activity) => String(activity.name || "").trim())
-    .slice(0, 2);
-
   return html`
     <aside className=${cx("surface-panel right-routine-sidebar", mobileOpen && "is-mobile-open")} aria-label="My Routine">
       <button type="button" className="secondary-button routine-mobile-close is-mobile-only" onClick=${onCloseMobile}>
         Close
       </button>
       <div className="right-routine-header">
-        <p className="eyebrow">My Routine</p>
-        <h2 className="font-display">Purpose</h2>
         <button type="button" className="primary-button right-routine-open-button" onClick=${onOpenRoutine}>
           My Routine
         </button>
-        <button
-          type="button"
-          className="text-link-button routine-meaning-button"
-          onClick=${() => setRoutineHelpOpen((currentValue) => !currentValue)}
-        >
-          What does this mean?
-        </button>
-      </div>
-
-      ${routineHelpOpen
-        ? html`
-            <div className="routine-meaning-panel">
-              A small routine gives your day a steady anchor. Pick one or two things you can actually keep doing, and VIRELI will plan around them.
-            </div>
-          `
-        : null}
-
-      <div className="right-routine-list">
-        ${routineItems.length
-          ? routineItems.map(
-              (activity, index) => html`
-                <div key=${activity.id || `right-routine-${index}`} className="right-routine-item">
-                  <strong>${activity.name}</strong>
-                  <span>${[
-                    activity.durationMinutes ? formatDurationFromMinutes(Number(activity.durationMinutes)) : "",
-                    activity.startTime ? formatTimeLabel(activity.startTime) : "Every day",
-                  ].filter(Boolean).join(" · ")}</span>
-                </div>
-              `,
-            )
-          : html`<p className="soft-note-inline">No routine set yet.</p>`}
       </div>
     </aside>
   `;
@@ -5268,6 +5181,7 @@ function HomeTab({
     .slice()
     .sort((a, b) => `${a.scheduledDate || a.dueDate || "9999-12-31"} ${a.scheduledTime || ""}`.localeCompare(`${b.scheduledDate || b.dueDate || "9999-12-31"} ${b.scheduledTime || ""}`));
   const nextTask = sortedTasks[0];
+  const hasRoutineItems = (routine.fixedActivities || []).some((item) => item.name) || (routine.miscTasks || []).some((item) => item.name);
 
   return html`
     <${motion.section}
@@ -5287,7 +5201,7 @@ function HomeTab({
 
       <div className="home-grid home-day24-grid">
         <article className="feature-card next-task-card home-welcome-card">
-          <h2 className="font-display">${nextTask ? "Next up" : "Start when you are ready."}</h2>
+          <h2 className="font-display">${nextTask ? "Next up" : hasRoutineItems ? "Start when you are ready." : "Set up My Routine"}</h2>
           ${nextTask
             ? html`
                 <p>VIRELI found the next saved item in your day.</p>
@@ -5297,7 +5211,9 @@ function HomeTab({
                 </div>
               `
             : html`
-                <p>Your Home stays clear until you add something real. Use the sidebar when you want to open My Routine, Calendar, or Ask VIRELI.</p>
+                ${hasRoutineItems
+                  ? html`<p>Your day is ready when you are.</p>`
+                  : html`<p>Add your regular activities so VIRELI can plan around them.</p><button type="button" className="primary-button" onClick=${() => onTabChange("routine")}>Open My Routine</button>`}
               `}
         </article>
       </div>
@@ -5973,7 +5889,11 @@ function CalendarTab({
   onSelectedDateChange,
   onHomeworkCompleteToggle,
   onCalendarTaskToggle,
+  onBlockoutSave,
+  onBlockoutDelete,
 }) {
+  const [blockoutEditor, setBlockoutEditor] = useState(null);
+  const [blockoutError, setBlockoutError] = useState("");
   const today = getDateInputValue();
   const monthAnchor = calendarMonth || new Date();
   const monthDates = getMonthGridDates(monthAnchor);
@@ -5998,7 +5918,11 @@ function CalendarTab({
     })),
   ];
   const visibleCalendarItems = calendarItems.filter((item) => item.calendarDate && !item.completed);
-  const selectedDateValue = selectedDate || "";
+  const monthPrefix = `${monthAnchor.getFullYear()}-${String(monthAnchor.getMonth() + 1).padStart(2, "0")}`;
+  const selectedDateValue = (selectedDate || "").startsWith(monthPrefix) ? selectedDate : "";
+  const selectedFlowItems = selectedDateValue ? getChronologicalDayItems({ routine, homeworkItems, calendarTasks, dateValue: selectedDateValue, savedClasses })
+    .filter((item) => !["free", "available", "unavailable"].includes(item.source)).slice(0, 12) : [];
+  const selectedBlockouts = selectedDateValue ? (routine.blockouts || []).filter((blockout) => blockoutAppliesToDate(blockout, selectedDateValue)) : [];
   const todaySummaryItems = getChronologicalDayItems({ routine, homeworkItems, calendarTasks, dateValue: today, savedClasses })
     .filter((item) => item.source !== "free")
     .slice(0, 6);
@@ -6084,6 +6008,50 @@ function CalendarTab({
           exit=${{ opacity: 0, x: -18 }}
           transition=${{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
         >
+          ${selectedDateValue ? html`
+            <${motion.div} key=${selectedDateValue} className="day27-selected-day" initial=${{ opacity: 0, y: 8 }} animate=${{ opacity: 1, y: 0 }} transition=${{ duration: 0.25 }}>
+              <strong>${formatShortDate(selectedDateValue)}</strong>
+              ${selectedFlowItems.length ? html`<div className="expanded-date-list">${selectedFlowItems.map((item) => html`
+                <div key=${`selected-${item.id}`} className=${cx("expanded-date-item", `is-${item.source}`)}><span>${item.title}</span><small>${[item.timeLabel, item.durationLabel].filter(Boolean).join(" · ")}</small></div>
+              `)}</div>` : selectedBlockouts.length ? null : html`<p>No scheduled items.</p>`}
+              <div className="day27-blockout-list">${selectedBlockouts.map((blockout) => html`
+                <div key=${blockout.id} className="day27-blockout-row">
+                  <span>${blockout.kind === "available" ? "Available" : "Unavailable"} · ${formatTimeLabel(blockout.startTime)}–${formatTimeLabel(blockout.endTime)}${blockout.date ? "" : " · Weekly"}</span>
+                  <button type="button" className="text-link-button" onClick=${() => { setBlockoutEditor({ ...blockout }); setBlockoutError(""); }}>Edit</button>
+                  <button type="button" className="text-link-button" onClick=${() => { onBlockoutDelete(blockout.id); setBlockoutEditor(null); }}>Remove</button>
+                </div>
+              `)}</div>
+              <button type="button" className="secondary-button day27-blockout-add" onClick=${() => {
+                setBlockoutEditor({ id: "", date: selectedDateValue, days: [], kind: "unavailable", startTime: "", endTime: "" });
+                setBlockoutError("");
+              }}>+ Blockout</button>
+              ${blockoutEditor
+                ? html`<form className="day27-blockout-editor" onSubmit=${(event) => {
+                    event.preventDefault();
+                    const result = onBlockoutSave(blockoutEditor);
+                    if (result.ok) { setBlockoutEditor(null); setBlockoutError(""); }
+                    else setBlockoutError(result.message);
+                  }}>
+                    <label>Meaning<select className="planning-input" value=${blockoutEditor.kind} onChange=${(event) => setBlockoutEditor({ ...blockoutEditor, kind: event.target.value })}>
+                      <option value="unavailable">Unavailable</option><option value="available">Available</option>
+                    </select></label>
+                    <label>Start<input className="planning-input" type="time" value=${blockoutEditor.startTime} onInput=${(event) => setBlockoutEditor({ ...blockoutEditor, startTime: event.target.value })} required /></label>
+                    <label>End<input className="planning-input" type="time" value=${blockoutEditor.endTime} onInput=${(event) => setBlockoutEditor({ ...blockoutEditor, endTime: event.target.value })} required /></label>
+                    <label>Repeat<select className="planning-input" value=${blockoutEditor.date ? "once" : "weekly"} onChange=${(event) => setBlockoutEditor(event.target.value === "once"
+                      ? { ...blockoutEditor, date: selectedDateValue, days: [] }
+                      : { ...blockoutEditor, date: "", days: [getWeekdayIndexForDate(selectedDateValue)] })}>
+                      <option value="once">This date</option><option value="weekly">Repeat weekly</option>
+                    </select></label>
+                    ${!blockoutEditor.date ? html`<div className="weekday-toggle-row" role="group" aria-label="Repeat weekdays">
+                      ${WEEKDAY_LABELS.map((day, dayIndex) => html`<button key=${day} type="button" className=${cx("choice-chip weekday-chip", blockoutEditor.days.includes(dayIndex) && "is-selected")}
+                        aria-pressed=${blockoutEditor.days.includes(dayIndex)} onClick=${() => setBlockoutEditor({ ...blockoutEditor, days: blockoutEditor.days.includes(dayIndex)
+                          ? blockoutEditor.days.filter((value) => value !== dayIndex) : [...blockoutEditor.days, dayIndex].sort() })}>${day}</button>`)}
+                    </div>` : null}
+                    ${blockoutError ? html`<p className="auth-inline-error" role="alert">${blockoutError}</p>` : null}
+                    <div className="day27-blockout-actions"><button type="submit" className="primary-button">Save Blockout</button><button type="button" className="secondary-button" onClick=${() => setBlockoutEditor(null)}>Cancel</button></div>
+                  </form>` : null}
+            </${motion.div}>
+          ` : null}
           <div className="month-calendar-grid">
             ${WEEKDAY_LABELS.map(
               (day) => html`<div key=${day} className="month-weekday">${day}</div>`,
@@ -6101,7 +6069,11 @@ function CalendarTab({
                 ...dayFlowItems.map((item) => ({ id: `flow-${item.id}`, title: item.title, completed: item.source === "day-plan" && item.sourceLabel === "Missed task" })),
               ].filter((item, index, items) => items.findIndex((candidate) => candidate.title === item.title) === index);
               const isExpanded = Boolean(selectedDateValue) && dateInfo.value === selectedDateValue;
-              const toggleDate = () => onSelectedDateChange(isExpanded ? "" : dateInfo.value);
+              const toggleDate = () => {
+                onSelectedDateChange(isExpanded ? "" : dateInfo.value);
+                setBlockoutEditor(null);
+                setBlockoutError("");
+              };
               return html`
                 <div
                   key=${dateInfo.value}
@@ -6113,21 +6085,9 @@ function CalendarTab({
                     isExpanded && "is-selected is-expanded",
                     dateInfo.value < today && "is-past",
                   )}
-                  onClick=${toggleDate}
-                  onKeyDown=${(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      toggleDate();
-                    }
-                  }}
-                  role="button"
-                  tabIndex="0"
-                  aria-label=${`Select ${formatShortDate(dateInfo.value)}`}
-                  aria-expanded=${isExpanded}
                 >
-                  <div className="month-date-head">
-                    <span>${dateInfo.day}</span>
-                  </div>
+                  <button type="button" className="month-date-head day27-date-button" onClick=${toggleDate}
+                    aria-label=${`Select ${formatShortDate(dateInfo.value)}`} aria-expanded=${isExpanded}>${dateInfo.day}</button>
                   <div className="month-date-items">
                     ${cellItems.slice(0, 3).map(
                       (item) => html`
@@ -6143,35 +6103,6 @@ function CalendarTab({
                       ? html`<small className="month-more-count">+${cellItems.length - 3} more</small>`
                       : null}
                   </div>
-                  <${AnimatePresence}>
-                    ${isExpanded
-                      ? html`
-                          <${motion.div}
-                            className="expanded-date-content"
-                            initial=${{ opacity: 0, y: 8, scale: 0.98 }}
-                            animate=${{ opacity: 1, y: 0, scale: 1 }}
-                            exit=${{ opacity: 0, y: 6, scale: 0.98 }}
-                            transition=${{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-                          >
-                            <strong>${formatShortDate(dateInfo.value)}</strong>
-                            ${dayFlowItems.length
-                              ? html`
-                                  <div className="expanded-date-list">
-                                    ${dayFlowItems.map(
-                                      (item) => html`
-                                        <div key=${`expanded-${dateInfo.value}-${item.id}`} className=${cx("expanded-date-item", `is-${item.source}`)}>
-                                          <span>${item.title}</span>
-                                          <small>${[item.timeLabel, item.durationLabel].filter(Boolean).join(" · ")}</small>
-                                        </div>
-                                      `,
-                                    )}
-                                  </div>
-                                `
-                              : html`<p>No scheduled items.</p>`}
-                          </${motion.div}>
-                        `
-                      : null}
-                  </${AnimatePresence}>
                 </div>
               `;
             })}
@@ -6662,6 +6593,8 @@ function DashboardShell({
   onModeItemSubmit,
   onCalendarTaskToggle,
   onCalendarTaskDelete,
+  onBlockoutSave,
+  onBlockoutDelete,
   onRoutineChange,
   onRoutineWorkloadSelect,
   onRoutineIntervalSelect,
@@ -6706,10 +6639,11 @@ function DashboardShell({
 }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [mobileRoutineOpen, setMobileRoutineOpen] = useState(false);
+  const previousPageRef = useRef("home");
+  if (activeTab !== "routine") previousPageRef.current = activeTab;
   let activeView = null;
   const primaryNavItems = getPrimaryNavItems();
   const pageLabel = [...NAV_ITEMS, { id: "routine", label: "My Routine" }, SETTINGS_NAV_ITEM].find((item) => item.id === activeTab)?.label || "Home";
-  const askPromptChips = getAskPromptChips({ routine, homeworkItems, calendarTasks, mood: moodSelection });
 
   if (activeTab === "home") {
     activeView = html`
@@ -6789,22 +6723,16 @@ function DashboardShell({
         onHomeworkDelete=${onHomeworkDelete}
         onCalendarTaskToggle=${onCalendarTaskToggle}
         onCalendarTaskDelete=${onCalendarTaskDelete}
+        onBlockoutSave=${onBlockoutSave}
+        onBlockoutDelete=${onBlockoutDelete}
       />
     `;
   } else if (activeTab === "ask") {
     activeView = html`
-      <${AskVireliTab}
-        messages=${messages}
-        recentAskHistory=${recentAskHistory}
-        promptChips=${askPromptChips}
-        chatDraft=${chatDraft}
-        isTyping=${isTyping}
-        chatError=${chatError}
-        onLoadAskHistory=${onLoadAskHistory}
-        onChatDraftChange=${onChatDraftChange}
-        onChatSubmit=${onChatSubmit}
-        onChatRetry=${onChatRetry}
-      />
+      <${motion.section} key="ask" className="tab-view day27-coming-soon" initial=${{ opacity: 0 }} animate=${{ opacity: 1 }} exit=${{ opacity: 0 }} transition=${{ duration: 0.25 }}>
+        <h1 className="font-display">Ask VIRELI</h1>
+        <p>Coming Soon</p>
+      </${motion.section}>
     `;
   } else if (activeTab === "improve") {
     activeView = html`
@@ -6844,6 +6772,18 @@ function DashboardShell({
         onSchedulingPreferenceChange=${onSchedulingPreferenceChange}
         onTabChange=${onTabChange}
       />
+    `;
+  }
+
+  if (activeTab === "routine") {
+    return html`
+      <${motion.section} className="day27-routine-workspace" initial=${{ opacity: 0 }} animate=${{ opacity: 1 }} exit=${{ opacity: 0 }} transition=${{ duration: 0.25 }}>
+        <header className="day27-workspace-header">
+          <button type="button" className="secondary-button" onClick=${() => onTabChange(previousPageRef.current)} aria-label="Exit My Routine">← Exit</button>
+          <span className="font-display">My Routine</span>
+        </header>
+        <main className="day27-workspace-content">${activeView}</main>
+      </${motion.section}>
     `;
   }
 
@@ -7136,6 +7076,23 @@ function App() {
   }, [routine]);
 
   useEffect(() => {
+    const refreshMissed = () => {
+      if (!activePlannerScope) return;
+      setRoutine((current) => {
+        const updated = updateMissedDayPlanBlocks(current);
+        return JSON.stringify(updated.dayPlans) === JSON.stringify(current.dayPlans) ? current : updated;
+      });
+      setRoutineDraft((current) => {
+        const updated = updateMissedDayPlanBlocks(current);
+        return JSON.stringify(updated.dayPlans) === JSON.stringify(current.dayPlans) ? current : updated;
+      });
+    };
+    const timer = window.setInterval(refreshMissed, 60_000);
+    document.addEventListener("visibilitychange", refreshMissed);
+    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", refreshMissed); };
+  }, []);
+
+  useEffect(() => {
     writePersistentObject(PROFILE_STORAGE_KEY, profile);
   }, [profile]);
 
@@ -7154,35 +7111,20 @@ function App() {
     saveConsistencyEvents(consistencyEvents);
   }, [consistencyEvents]);
 
-  useEffect(() => {
-    if (!/^https?:$/.test(window.location.protocol)) {
-      return;
-    }
-
-    fetch("/api/auth/me", { credentials: "same-origin" })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((session) => {
-        if (!session?.authenticated || !session.user) {
-          return;
-        }
-
-        const sessionProfile = {
-          ...profile,
-          connected: true,
-          guest: false,
-          name: session.user.name || session.user.username || profile.name || "",
-          email: "",
-          username: session.user.username || profile.username || "",
-          authMode: session.user.authMode || "vireli-account",
-          setupComplete: Boolean(profile.setupComplete),
-          setupStep: profile.setupComplete ? 2 : Math.max(1, Math.min(2, Number(profile.setupStep || 1))),
-          updatedAt: new Date().toISOString(),
-        };
-        setProfile(sessionProfile);
-        setProfileDraft({ ...sessionProfile, name: sessionProfile.name || "" });
-      })
-      .catch(() => {});
-  }, []);
+  function restorePlannerState() {
+    const savedRoutine = loadRoutine();
+    setRoutine(savedRoutine);
+    setRoutineDraft(savedRoutine);
+    setSavedClasses(loadSavedClasses());
+    setHomeworkItems(loadSavedHomework());
+    setCalendarTasks(loadUnifiedCalendarTasks());
+    setCalendarPreferences(loadCalendarPreferences());
+    setConsistencyEvents(loadConsistencyEvents());
+    setThoughts(loadThoughts());
+    setFeedbackDraft(EMPTY_FEEDBACK_DRAFT);
+    setFeedbackSubmitted(false);
+    setRoutineStepComplete(Boolean(savedRoutine.wakeTime && savedRoutine.bedTime));
+  }
 
   useEffect(() => {
     writePersistentArray(RECOMMENDATION_STORAGE_KEY, []);
@@ -7223,8 +7165,8 @@ function App() {
     askSessionIdRef.current = makeId("ask-session");
     setMessages(buildInitialMessages(choice));
     setMoodCheckInComplete(true);
-    setLaunchSetupComplete(false);
-    setLaunchSetupStep(1);
+    setLaunchSetupComplete(Boolean(profile.setupComplete));
+    setLaunchSetupStep(profile.setupComplete ? 2 : 1);
     setProfile((currentProfile) => {
       const nextProfile = {
         ...currentProfile,
@@ -7286,10 +7228,11 @@ function App() {
   }
 
   function handleScheduleBasicsContinue() {
+    if (!routineDraft.wakeTime || !routineDraft.bedTime || routineDraft.wakeTime === routineDraft.bedTime) return;
     const nextRoutine = saveRoutine({
       ...routineDraft,
-      wakeTime: routineDraft.wakeTime || "07:00",
-      bedTime: routineDraft.bedTime || "22:00",
+      wakeTime: routineDraft.wakeTime,
+      bedTime: routineDraft.bedTime,
       preferredDailyWorkloadMinutes: routineDraft.preferredDailyWorkloadMinutes || String(DEFAULT_DAILY_WORKLOAD_MINUTES),
       preferredWorkIntervalMinutes: "",
       preferredWorkIntervalLabel: "",
@@ -7470,42 +7413,46 @@ function App() {
     });
   }
 
-  function completeAuthenticatedProfile(user, fallbackAuthMode = "vireli-account") {
+  function completeAuthenticatedProfile(user, fallbackAuthMode = "vireli-account", isNewAccount = false) {
     const now = new Date().toISOString();
     const authMode = user.authMode || fallbackAuthMode;
+    activatePlannerScope(`account-${user.id}`, user.username || "", !isNewAccount);
+    const savedProfile = loadProfile();
+    restorePlannerState();
     const nextProfile = {
       ...EMPTY_PROFILE,
+      ...savedProfile,
       connected: true,
       guest: false,
-      name: user.name || user.username || "VIRELI user",
+      name: savedProfile.name || "",
       email: "",
       username: user.username || "",
       picture: user.picture || "",
       googleSub: "",
       password: "",
       authMode,
-      classSetupSkipped: profile.classSetupSkipped,
-      routineSetupSkipped: profile.routineSetupSkipped,
-      primaryUse: profile.primaryUse,
-      setupComplete: Boolean(profile.setupComplete),
-      setupStep: profile.setupComplete ? 2 : Math.max(1, Math.min(2, Number(profile.setupStep || 1))),
-      timezone: profile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+      classSetupSkipped: savedProfile.classSetupSkipped,
+      routineSetupSkipped: savedProfile.routineSetupSkipped,
+      primaryUse: savedProfile.primaryUse,
+      setupComplete: Boolean(savedProfile.setupComplete),
+      setupStep: savedProfile.setupComplete ? 2 : Math.max(1, Math.min(2, Number(savedProfile.setupStep || 1))),
+      timezone: savedProfile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
       schedulingPreferences: {
         ...EMPTY_PROFILE.schedulingPreferences,
-        ...(profile.schedulingPreferences || {}),
+        ...(savedProfile.schedulingPreferences || {}),
       },
-      createdAt: profile.createdAt || user.createdAt || now,
+      createdAt: savedProfile.createdAt || user.createdAt || now,
       updatedAt: now,
     };
 
     const nextDraft = { ...nextProfile };
     setProfile(nextProfile);
     setProfileDraft(nextDraft);
-    setRoutineDraft(getBlankSetupRoutineDraft(routine));
     setProfileStepComplete(true);
     setMoodCheckInComplete(false);
     setLaunchSetupStep(1);
-    setLaunchSetupComplete(false);
+    setLaunchSetupComplete(Boolean(savedProfile.setupComplete));
+    setActiveTab("home");
   }
 
   async function handleVireliAccountSubmit(event) {
@@ -7552,7 +7499,7 @@ function App() {
         throw new Error(payload.error || (accountAuthMode === "signin" ? "Could not sign in." : "Account could not be created."));
       }
 
-      completeAuthenticatedProfile(payload.user, "vireli-account");
+      completeAuthenticatedProfile(payload.user, "vireli-account", accountAuthMode === "create");
       setAccountStep("choice");
       setAccountUsername("");
       setAccountPassword("");
@@ -7582,33 +7529,36 @@ function App() {
 
   function handleContinueAsGuest() {
     const now = new Date().toISOString();
+    activatePlannerScope("guest");
+    const savedProfile = loadProfile();
+    restorePlannerState();
     const nextProfile = {
       ...EMPTY_PROFILE,
+      ...savedProfile,
       connected: false,
       guest: true,
-      name: "",
+      name: savedProfile.name || "",
       authMode: "guest",
-      classSetupSkipped: profile.classSetupSkipped,
-      routineSetupSkipped: profile.routineSetupSkipped,
-      primaryUse: profile.primaryUse,
-      setupComplete: Boolean(profile.setupComplete),
-      setupStep: profile.setupComplete ? 2 : Math.max(1, Math.min(2, Number(profile.setupStep || 1))),
-      timezone: profile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+      classSetupSkipped: savedProfile.classSetupSkipped,
+      routineSetupSkipped: savedProfile.routineSetupSkipped,
+      primaryUse: savedProfile.primaryUse,
+      setupComplete: Boolean(savedProfile.setupComplete),
+      setupStep: savedProfile.setupComplete ? 2 : Math.max(1, Math.min(2, Number(savedProfile.setupStep || 1))),
+      timezone: savedProfile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
       schedulingPreferences: {
         ...EMPTY_PROFILE.schedulingPreferences,
-        ...(profile.schedulingPreferences || {}),
+        ...(savedProfile.schedulingPreferences || {}),
       },
-      createdAt: profile.createdAt || now,
+      createdAt: savedProfile.createdAt || now,
       updatedAt: now,
     };
 
     setProfile(nextProfile);
     setProfileDraft({ ...nextProfile });
-    setRoutineDraft(getBlankSetupRoutineDraft(routine));
     setProfileStepComplete(true);
     setMoodCheckInComplete(false);
     setLaunchSetupStep(1);
-    setLaunchSetupComplete(false);
+    setLaunchSetupComplete(Boolean(savedProfile.setupComplete));
     setAccountStep("choice");
     setAccountUsername("");
     setAccountPassword("");
@@ -7623,8 +7573,16 @@ function App() {
         credentials: "same-origin",
       }).catch(() => {});
     }
+    activePlannerScope = "";
     setProfile(EMPTY_PROFILE);
     setProfileDraft(EMPTY_PROFILE);
+    setRoutine(EMPTY_ROUTINE_DRAFT);
+    setRoutineDraft(EMPTY_ROUTINE_DRAFT);
+    setHomeworkItems([]);
+    setCalendarTasks([]);
+    setSavedClasses([]);
+    setThoughts([]);
+    setConsistencyEvents([]);
     setProfileStepComplete(false);
     setIntroComplete(false);
     setMoodCheckInComplete(false);
@@ -7770,6 +7728,38 @@ function App() {
     }
   }
 
+  function handleBlockoutSave(entry) {
+    const blockout = normalizeBlockout({ ...entry, id: entry.id || makeId("blockout") });
+    if (!blockout.startTime || !blockout.endTime || (!blockout.date && !blockout.days.length)) {
+      return { ok: false, message: "Choose a date or weekdays, plus start and end times." };
+    }
+    const nextBlockouts = [...(routine.blockouts || []).filter((item) => item.id !== blockout.id), blockout];
+    const nextDraft = { ...routine, blockouts: nextBlockouts };
+    const validation = validateRoutineDraft(nextDraft);
+    if (!validation.ok) return validation;
+    if (blockout.kind === "unavailable") {
+      const range = getTimeRange(blockout);
+      const conflictDate = Object.entries(routine.dayPlans || {}).find(([dateValue, blocks]) =>
+        blockoutAppliesToDate(blockout, dateValue) && blocks.some((planBlock) => {
+          if (planBlock.status === DAY_PLAN_STATUS.complete || planBlock.status === DAY_PLAN_STATUS.missed) return false;
+          const planRange = getTimeRange(planBlock);
+          return planRange && rangesOverlap(range.startMinutes, range.endMinutes, planRange.startMinutes, planRange.endMinutes);
+        }),
+      );
+      if (conflictDate) return { ok: false, message: `A saved Day Plan already uses this time on ${formatShortDate(conflictDate[0])}. Move that task first.` };
+    }
+    const saved = saveRoutine(nextDraft);
+    setRoutine(saved);
+    setRoutineDraft(saved);
+    return { ok: true, message: "" };
+  }
+
+  function handleBlockoutDelete(id) {
+    const saved = saveRoutine({ ...routine, blockouts: (routine.blockouts || []).filter((item) => item.id !== id) });
+    setRoutine(saved);
+    setRoutineDraft(saved);
+  }
+
   function handleGenerateDayPlan(dateValue = getDateInputValue()) {
     const generation = generateDayPlan(routineDraft, dateValue);
     if (!generation.ok) {
@@ -7817,8 +7807,15 @@ function App() {
     const movedRange = getTimeRange(movedBlock);
     const windows = getAvailableSchedulingWindows(testRoutine, dateValue);
     const fitsWindow = movedRange && windows.some((windowBlock) => rangesOverlap(movedRange.startMinutes, movedRange.endMinutes, windowBlock.startMinutes, windowBlock.endMinutes) && movedRange.startMinutes >= windowBlock.startMinutes && movedRange.endMinutes <= windowBlock.endMinutes);
-    if (!fitsWindow) {
-      setRoutineValidationMessage("That move would place the task outside your available time or into an Unavailable Blockout.");
+    const overlapsTask = movedRange && currentBlocks.some((block) => {
+      if (block.id === blockId || block.status === DAY_PLAN_STATUS.complete || block.status === DAY_PLAN_STATUS.missed) return false;
+      const range = getTimeRange(block);
+      return range && rangesOverlap(movedRange.startMinutes, movedRange.endMinutes, range.startMinutes, range.endMinutes);
+    });
+    if (!fitsWindow || overlapsTask) {
+      setRoutineValidationMessage(overlapsTask
+        ? "That move would overlap another planned task."
+        : "That move would place the task outside your available time or into an Unavailable Blockout.");
       return;
     }
     const nextRoutine = persistRoutineDraft(testRoutine, { markSetupComplete: true });
@@ -9263,6 +9260,8 @@ function classifyAskPlannerType(prompt) {
                   onSelectedCalendarDateChange=${setSelectedCalendarDate}
                   onCalendarTaskToggle=${handleCalendarTaskToggle}
                   onCalendarTaskDelete=${handleCalendarTaskDelete}
+                  onBlockoutSave=${handleBlockoutSave}
+                  onBlockoutDelete=${handleBlockoutDelete}
                   onRoutineChange=${handleRoutineChange}
                   onRoutineWorkloadSelect=${handleRoutineWorkloadSelect}
                   onRoutineIntervalSelect=${handleRoutineIntervalSelect}
