@@ -202,7 +202,7 @@ function getBlankSetupRoutineDraft(baseRoutine = EMPTY_ROUTINE_DRAFT) {
   };
 }
 
-const APP_VERSION = "day28-guided-routine-blockouts-20261010";
+const APP_VERSION = "day28-auth-availability-fix-20261011";
 const INTRO_ANIMATION_SECONDS = 1.35;
 const INTRO_SCREEN_DURATION_MS = 3200;
 const THEME_TRANSITION_DURATION_MS = 2000;
@@ -7397,12 +7397,19 @@ function App() {
           credentials: "same-origin",
           body: JSON.stringify({ username }),
         });
-        const payload = await response.json().catch(() => ({}));
+        const isJsonResponse = response.headers.get("content-type")?.includes("application/json");
+        if (!isJsonResponse) {
+          throw new Error("VIRELI's secure account server is not available on this website. Open the localhost version to sign up.");
+        }
+        const payload = await response.json();
+        if (response.status === 409) {
+          throw new Error("Username already taken");
+        }
         if (!response.ok || !payload.available) {
-          throw new Error(payload.error || "That username is already taken.");
+          throw new Error(payload.error || "VIRELI could not check that username. Try again.");
         }
       } catch (error) {
-        setAccountError(error.message || "That username is not available.");
+        setAccountError(error.message || "VIRELI could not connect to the account server. Try again.");
         setAccountStatus("idle");
         return;
       }
@@ -7588,7 +7595,11 @@ function App() {
           password: accountPassword,
         }),
       });
-      const payload = await response.json().catch(() => ({}));
+      const isJsonResponse = response.headers.get("content-type")?.includes("application/json");
+      if (!isJsonResponse) {
+        throw new Error("VIRELI's secure account server is not available on this website. Open the localhost version to continue.");
+      }
+      const payload = await response.json();
 
       if (!response.ok || !payload.authenticated || !payload.user) {
         throw new Error(payload.error || (accountAuthMode === "signin" ? "Could not sign in." : "Account could not be created."));

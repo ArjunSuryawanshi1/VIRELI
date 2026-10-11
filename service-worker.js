@@ -1,9 +1,9 @@
-const VIRELI_CACHE = "vireli-day28-guided-routine-blockouts-shell-v1";
+const VIRELI_CACHE = "vireli-day28-auth-availability-fix-shell-v1";
 const VIRELI_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=day28-guided-routine-blockouts-20261010",
-  "./script.js?v=day28-guided-routine-blockouts-20261010",
+  "./styles.css?v=day28-auth-availability-fix-20261011",
+  "./script.js?v=day28-auth-availability-fix-20261011",
   "./manifest.webmanifest",
   "./icons/vireli-icon.svg",
 ];
