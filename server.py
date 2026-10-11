@@ -36,6 +36,8 @@ def get_session_secret():
     secret = os.environ.get("VIRELI_SESSION_SECRET", "").strip()
     if secret:
         return secret.encode("utf-8")
+    if os.environ.get("VIRELI_ENV", "").strip().lower() == "production":
+        raise RuntimeError("VIRELI_SESSION_SECRET is required in production")
     return b"vireli-dev-session-secret-change-me"
 
 
@@ -286,7 +288,7 @@ def create_vireli_user(username, password):
                 (normalized_username,),
             ).fetchone()
             if existing:
-                return False, HTTPStatus.CONFLICT, {"error": "That username is already taken."}
+                return False, HTTPStatus.CONFLICT, {"error": "Username already taken"}
 
             connection.execute(
                 """
@@ -311,7 +313,7 @@ def create_vireli_user(username, password):
             user_id = connection.execute("SELECT last_insert_rowid()").fetchone()[0]
             row = connection.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     except sqlite3.IntegrityError:
-        return False, HTTPStatus.CONFLICT, {"error": "That username is already taken."}
+        return False, HTTPStatus.CONFLICT, {"error": "Username already taken"}
 
     return True, HTTPStatus.OK, {"authenticated": True, "user": row_to_user(row)}
 
@@ -329,7 +331,7 @@ def check_vireli_username(username):
         ).fetchone()
 
     if existing:
-        return False, HTTPStatus.CONFLICT, {"available": False, "error": "That username is already taken."}
+        return False, HTTPStatus.CONFLICT, {"available": False, "error": "Username already taken"}
 
     return True, HTTPStatus.OK, {"available": True, "username": normalized_username}
 
@@ -342,8 +344,10 @@ def login_vireli_user(username, password):
             (normalized_username,),
         ).fetchone()
 
-        if not row or not verify_password(password, row["password_hash"], row["password_salt"]):
-            return False, HTTPStatus.UNAUTHORIZED, {"error": "That username or password is not correct."}
+        if not row:
+            return False, HTTPStatus.NOT_FOUND, {"error": "Account not found"}
+        if not verify_password(password, row["password_hash"], row["password_salt"]):
+            return False, HTTPStatus.UNAUTHORIZED, {"error": "Incorrect password"}
 
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         connection.execute(
@@ -854,7 +858,7 @@ class VireliRequestHandler(SimpleHTTPRequestHandler):
         if route == "/api/config":
             self.send_json(
                 HTTPStatus.OK,
-                {"authModes": ["vireli-account", "guest"]},
+                {"authModes": ["vireli-account"]},
             )
             return
 

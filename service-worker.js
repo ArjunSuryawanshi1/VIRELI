@@ -1,9 +1,9 @@
-const VIRELI_CACHE = "vireli-day27-routine-calendar-blockouts-shell-v1";
+const VIRELI_CACHE = "vireli-day28-guided-routine-blockouts-shell-v1";
 const VIRELI_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=day27-routine-calendar-blockouts-20260921",
-  "./script.js?v=day27-routine-calendar-blockouts-20260921",
+  "./styles.css?v=day28-guided-routine-blockouts-20261010",
+  "./script.js?v=day28-guided-routine-blockouts-20261010",
   "./manifest.webmanifest",
   "./icons/vireli-icon.svg",
 ];
@@ -31,9 +31,14 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match("./index.html")),
+    );
+    return;
+  }
+
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) =>
-      cachedResponse || fetch(event.request).catch(() => caches.match("./index.html")),
-    ),
+    caches.match(event.request).then((cachedResponse) => cachedResponse || fetch(event.request)),
   );
 });

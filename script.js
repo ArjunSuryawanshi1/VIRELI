@@ -202,7 +202,7 @@ function getBlankSetupRoutineDraft(baseRoutine = EMPTY_ROUTINE_DRAFT) {
   };
 }
 
-const APP_VERSION = "day27-routine-calendar-blockouts-20260921";
+const APP_VERSION = "day28-guided-routine-blockouts-20261010";
 const INTRO_ANIMATION_SECONDS = 1.35;
 const INTRO_SCREEN_DURATION_MS = 3200;
 const THEME_TRANSITION_DURATION_MS = 2000;
@@ -695,7 +695,7 @@ function normalizeRoutineEntry(entry = {}) {
     .slice(0, 40);
   const blockouts = (Array.isArray(entry.blockouts) ? entry.blockouts : [])
     .map(normalizeBlockout)
-    .filter((blockout) => blockout.startTime && blockout.endTime && (blockout.date || blockout.days.length))
+    .filter((blockout) => blockout.startTime && blockout.endTime && (blockout.dates.length || blockout.days.length))
     .slice(0, 60);
   const dayPlans = normalizeDayPlans(entry.dayPlans || {});
 
@@ -765,6 +765,7 @@ function normalizeMiscTask(task = {}, index = 0) {
     name: String(task.name || task.title || "").trim(),
     durationMinutes: String(task.durationMinutes || task.estimatedMinutes || task.duration || "").trim(),
     status: task.status || "Open",
+    targetDate: /^\d{4}-\d{2}-\d{2}$/.test(task.targetDate || "") ? task.targetDate : (task.scheduledDate || ""),
     scheduledDate: task.scheduledDate || "",
     scheduledTime: task.scheduledTime || "",
     completedAt: task.completedAt || "",
@@ -779,11 +780,19 @@ function normalizeBlockout(blockout = {}, index = 0) {
     : [];
   return {
     id: blockout.id || makeId(`blockout-${index}`),
+    groupId: blockout.groupId || blockout.id || makeId(`blockout-group-${index}`),
+    parentGroupId: blockout.parentGroupId || "",
     startTime: String(blockout.startTime || "").trim(),
     endTime: String(blockout.endTime || "").trim(),
     kind: blockout.kind === "available" ? "available" : "unavailable",
     date: /^\d{4}-\d{2}-\d{2}$/.test(blockout.date || "") ? blockout.date : "",
+    dates: Array.from(new Set([
+      ...(Array.isArray(blockout.dates) ? blockout.dates : []),
+      blockout.date || "",
+    ].filter((dateValue) => /^\d{4}-\d{2}-\d{2}$/.test(dateValue)))).sort(),
     days,
+    excludedDates: Array.from(new Set((Array.isArray(blockout.excludedDates) ? blockout.excludedDates : [])
+      .filter((dateValue) => /^\d{4}-\d{2}-\d{2}$/.test(dateValue)))).sort(),
     createdAt: blockout.createdAt || "",
     updatedAt: blockout.updatedAt || "",
   };
@@ -833,9 +842,25 @@ function getWeekdayIndexForDate(dateValue = getDateInputValue()) {
 }
 
 function blockoutAppliesToDate(blockout, dateValue = getDateInputValue()) {
+  if ((blockout.excludedDates || []).includes(dateValue)) return false;
+  if ((blockout.dates || []).length) return blockout.dates.includes(dateValue);
   if (blockout.date) return blockout.date === dateValue;
   const weekdayIndex = getWeekdayIndexForDate(dateValue);
   return Array.isArray(blockout.days) && blockout.days.includes(weekdayIndex);
+}
+
+function blockoutsShareOccurrence(first, second) {
+  const firstDates = first.dates || (first.date ? [first.date] : []);
+  const secondDates = second.dates || (second.date ? [second.date] : []);
+  if (firstDates.some((dateValue) => blockoutAppliesToDate(second, dateValue))) return true;
+  if (secondDates.some((dateValue) => blockoutAppliesToDate(first, dateValue))) return true;
+  return (first.days || []).some((day) => (second.days || []).includes(day));
+}
+
+function describeBlockoutOccurrence(blockout) {
+  const dates = blockout.dates || (blockout.date ? [blockout.date] : []);
+  if (dates.length) return dates.map(formatShortDate).join(", ");
+  return (blockout.days || []).map((day) => WEEKDAY_LABELS[day]).join(", ") || "the selected date";
 }
 
 function getTimeRange(entry = {}) {
@@ -934,7 +959,7 @@ function validateRoutineDraft(routineDraft = EMPTY_ROUTINE_DRAFT, options = {}) 
     if (!range || range.endMinutes <= range.startMinutes) {
       return { ok: false, message: "Blockouts need a start time before the end time." };
     }
-    if (!blockout.date && !blockout.days.length) {
+    if (!blockout.dates.length && !blockout.days.length) {
       return { ok: false, message: "Choose a date or at least one weekday for each Blockout." };
     }
   }
@@ -945,15 +970,9 @@ function validateRoutineDraft(routineDraft = EMPTY_ROUTINE_DRAFT, options = {}) 
     for (let compareIndex = index + 1; compareIndex < blockouts.length; compareIndex += 1) {
       const other = blockouts[compareIndex];
       const otherRange = getTimeRange(other);
-      const sharedDay = blockout.date && other.date
-        ? blockout.date === other.date
-        : blockout.date
-          ? other.days.includes(getWeekdayIndexForDate(blockout.date))
-          : other.date
-            ? blockout.days.includes(getWeekdayIndexForDate(other.date))
-            : blockout.days.some((day) => other.days.includes(day));
+      const sharedDay = blockoutsShareOccurrence(blockout, other);
       if (sharedDay && range && otherRange && blockout.kind !== other.kind && rangesOverlap(range.startMinutes, range.endMinutes, otherRange.startMinutes, otherRange.endMinutes)) {
-        return { ok: false, message: "Available and Unavailable Blockouts cannot overlap on the same day." };
+        return { ok: false, message: `${describeBlockoutOccurrence(blockout)} has an Available/Unavailable conflict from ${formatTimeLabel(blockout.startTime)} to ${formatTimeLabel(blockout.endTime)}.` };
       }
     }
   }
@@ -978,13 +997,14 @@ function validateRoutineDraft(routineDraft = EMPTY_ROUTINE_DRAFT, options = {}) 
       }
       const blockoutRange = getTimeRange(blockout);
       const activityDays = normalizeFixedActivity(activity).days;
-      const sameDay = blockout.date
-        ? activityDays.includes(getWeekdayIndexForDate(blockout.date))
+      const specificDates = blockout.dates || (blockout.date ? [blockout.date] : []);
+      const sameDay = specificDates.length
+        ? specificDates.some((dateValue) => activityDays.includes(getWeekdayIndexForDate(dateValue)))
         : blockout.days.some((day) => activityDays.includes(day));
       return sameDay && blockoutRange && rangesOverlap(activityRange.startMinutes, activityRange.endMinutes, blockoutRange.startMinutes, blockoutRange.endMinutes);
     });
     if (conflictingBlockout && (!targetBlockoutId || conflictingBlockout.id === targetBlockoutId || !targetFixedId || activity.id === targetFixedId)) {
-      return { ok: false, message: `The fixed activity "${activity.name}" overlaps with an Unavailable Blockout.` };
+      return { ok: false, message: `"${activity.name}" conflicts with an Unavailable Blockout on ${describeBlockoutOccurrence(conflictingBlockout)} at ${formatTimeLabel(conflictingBlockout.startTime)}.` };
     }
   }
 
@@ -1055,7 +1075,7 @@ function generateDayPlan(routine = EMPTY_ROUTINE_DRAFT, dateValue = getDateInput
   const windows = getAvailableSchedulingWindows(routine, dateValue).map((windowBlock) => ({ ...windowBlock }));
   const blocks = [];
   const unscheduled = [];
-  const openTasks = (routine.miscTasks || []).filter((task) => task.name && Number(task.durationMinutes) > 0 && task.status !== DAY_PLAN_STATUS.complete);
+  const openTasks = (routine.miscTasks || []).filter((task) => task.name && Number(task.durationMinutes) > 0 && task.status !== DAY_PLAN_STATUS.complete && (!task.targetDate || task.targetDate === dateValue));
 
   openTasks.forEach((task) => {
     const duration = Number(task.durationMinutes);
@@ -1168,7 +1188,7 @@ function saveRoutine(routineDraft) {
       .slice(0, 40),
     blockouts: (routineDraft.blockouts || [])
       .map(normalizeBlockout)
-      .filter((item) => item.startTime && item.endTime && (item.date || item.days.length))
+      .filter((item) => item.startTime && item.endTime && (item.dates.length || item.days.length))
       .slice(0, 60),
     dayPlans: normalizeDayPlans(routineDraft.dayPlans || {}),
     mealTimes: [],
@@ -4369,10 +4389,10 @@ function SetupAboutScreen({
   return html`
     <${motion.section}
       className="mood-screen min-h-screen relative flex items-center justify-center overflow-hidden px-5 py-8 sm:px-8"
-      initial=${{ opacity: 0 }}
-      animate=${{ opacity: 1 }}
-      exit=${{ opacity: 0, scale: 0.985 }}
-      transition=${{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
+      initial=${{ opacity: 0, x: 18 }}
+      animate=${{ opacity: 1, x: 0 }}
+      exit=${{ opacity: 0, x: -18 }}
+      transition=${{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
     >
       <${GraphBackdrop} />
       <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col items-center gap-5">
@@ -4561,6 +4581,7 @@ function SetupScheduleBasicsScreen({
   routineDraft,
   onRoutineChange,
   onContinue,
+  onBack,
 }) {
   const canContinue = /^\d{2}:\d{2}$/.test(routineDraft.wakeTime || "") &&
     /^\d{2}:\d{2}$/.test(routineDraft.bedTime || "") && routineDraft.wakeTime !== routineDraft.bedTime;
@@ -4568,10 +4589,10 @@ function SetupScheduleBasicsScreen({
   return html`
     <${motion.section}
       className="mood-screen min-h-screen relative flex items-center justify-center overflow-hidden px-5 py-8 sm:px-8"
-      initial=${{ opacity: 0 }}
-      animate=${{ opacity: 1 }}
-      exit=${{ opacity: 0, scale: 0.985 }}
-      transition=${{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
+      initial=${{ opacity: 0, x: 18 }}
+      animate=${{ opacity: 1, x: 0 }}
+      exit=${{ opacity: 0, x: -18 }}
+      transition=${{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
     >
       <${GraphBackdrop} />
       <div className="relative z-10 mx-auto flex w-full max-w-5xl flex-col items-center gap-5">
@@ -4601,6 +4622,7 @@ function SetupScheduleBasicsScreen({
             </div>
           </div>
           <div className="mood-control-row">
+            <button type="button" className="secondary-button" onClick=${onBack}>Back</button>
             <button type="button" className="primary-button" onClick=${onContinue} disabled=${!canContinue}>Finish Setup</button>
           </div>
         </${motion.div}>
@@ -4770,7 +4792,6 @@ function AccountScreen({
   accountPasswordVisible,
   accountStatus,
   accountError,
-  onContinueToVireli,
   onAccountAuthModeChange,
   onAccountUsernameChange,
   onAccountUsernameContinue,
@@ -4779,12 +4800,12 @@ function AccountScreen({
   onAccountPasswordConfirmChange,
   onAccountPasswordVisibleToggle,
   onVireliAccountSubmit,
-  onContinueAsGuest,
 }) {
   const isCreatingAccount = accountStatus === "creating";
   const isSigningIn = accountStatus === "signing-in";
   const isCheckingUsername = accountStatus === "checking";
-  const isBusy = isCreatingAccount || isSigningIn || isCheckingUsername;
+  const isRestoringSession = accountStatus === "checking-session";
+  const isBusy = isCreatingAccount || isSigningIn || isCheckingUsername || isRestoringSession;
   const canContinueUsername = Boolean(accountUsername.trim()) && !isBusy;
   const canCreateAccount = accountAuthMode === "signin"
     ? Boolean(accountUsername.trim() && accountPassword && !isBusy)
@@ -4820,15 +4841,13 @@ function AccountScreen({
           ${isChoiceStep
             ? html`
               <div className="account-choice-actions">
-                <button type="button" className="primary-button auth-primary-button get-started-button" onClick=${() => onAccountAuthModeChange("create")}>
+                <button type="button" className="primary-button auth-primary-button get-started-button" onClick=${() => onAccountAuthModeChange("create")} disabled=${isBusy}>
                   Sign Up
                 </button>
-                <button type="button" className="secondary-button auth-primary-button get-started-button" onClick=${() => onAccountAuthModeChange("signin")}>
+                <button type="button" className="secondary-button auth-primary-button get-started-button" onClick=${() => onAccountAuthModeChange("signin")} disabled=${isBusy}>
                   Sign In
                 </button>
-                <button type="button" className="secondary-button auth-primary-button get-started-button account-guest-choice" onClick=${onContinueAsGuest} disabled=${isBusy}>
-                  Continue as Guest
-                </button>
+                ${accountError ? html`<${motion.p} className="auth-inline-error" role="alert" initial=${{ opacity: 0, y: -5 }} animate=${{ opacity: 1, y: 0 }}>${accountError}</${motion.p}>` : null}
               </div>
             `
             : isUsernameStep
@@ -4937,73 +4956,122 @@ function AccountScreen({
   `;
 }
 
+function GuidedRoutineFlow({ kind, initialValue, onCancel, onSave }) {
+  const isFixed = kind === "fixed";
+  const steps = isFixed ? ["Name", "Days", "Start time", "Duration", "Review"] : ["Name", "Duration", "Target date", "Review"];
+  const [step, setStep] = useState(0);
+  const [draft, setDraft] = useState(() => isFixed
+    ? normalizeFixedActivity(initialValue || { id: makeId("fixed-activity"), days: [] })
+    : normalizeMiscTask(initialValue || { id: makeId("misc-task"), durationMinutes: "30", targetDate: getDateInputValue() }));
+  const [error, setError] = useState("");
+  const [showDiscard, setShowDiscard] = useState(false);
+  const initialSnapshot = useRef(JSON.stringify(draft));
+  const isDirty = JSON.stringify(draft) !== initialSnapshot.current;
+  const isEditing = Boolean(initialValue?.id);
+
+  useEffect(() => {
+    const warnBeforeUnload = (event) => {
+      if (!isDirty) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [isDirty]);
+
+  useEffect(() => {
+    window.__VIRELI_UNSAVED_FLOW__ = isDirty;
+    return () => { window.__VIRELI_UNSAVED_FLOW__ = false; };
+  }, [isDirty]);
+
+  function validateCurrentStep() {
+    if (step === 0 && !draft.name.trim()) return "Enter a name before continuing.";
+    if (isFixed && step === 1 && !draft.days.length) return "Choose at least one day.";
+    if (isFixed && step === 2 && !draft.startTime) return "Choose a start time.";
+    if (((isFixed && step === 3) || (!isFixed && step === 1)) && !(Number(draft.durationMinutes) > 0)) return "Choose a duration.";
+    if (!isFixed && step === 2 && !draft.targetDate) return "Choose a target date.";
+    return "";
+  }
+
+  function requestExit() {
+    if (isDirty) setShowDiscard(true);
+    else onCancel();
+  }
+
+  function goNext() {
+    const nextError = validateCurrentStep();
+    if (nextError) {
+      setError(nextError);
+      return;
+    }
+    setError("");
+    setStep((current) => Math.min(steps.length - 1, current + 1));
+  }
+
+  const updateDraft = (field, value) => {
+    setError("");
+    setDraft((current) => ({ ...current, [field]: value }));
+  };
+
+  return html`
+    <${motion.section} className="guided-flow" initial=${{ opacity: 0, x: 18 }} animate=${{ opacity: 1, x: 0 }} exit=${{ opacity: 0, x: -18 }} transition=${{ duration: 0.25 }}>
+      <header className="guided-flow-header">
+        <button type="button" className="secondary-button" onClick=${requestExit}>← Exit</button>
+        <div><span>${isEditing ? "Edit" : "Create"} ${isFixed ? "activity" : "task"}</span><small>${step + 1} of ${steps.length}</small></div>
+      </header>
+      <div className="guided-progress" aria-label=${`Step ${step + 1} of ${steps.length}`}><span style=${{ width: `${((step + 1) / steps.length) * 100}%` }}></span></div>
+      <${AnimatePresence} mode="wait" initial=${false}>
+        <${motion.div} key=${step} className="guided-step" initial=${{ opacity: 0, x: 16 }} animate=${{ opacity: 1, x: 0 }} exit=${{ opacity: 0, x: -16 }} transition=${{ duration: 0.25 }}>
+          ${step === 0 ? html`
+            <label className="guided-question"><strong>What is the ${isFixed ? "activity" : "task"}?</strong><input autoFocus className="planning-input" value=${draft.name} onInput=${(event) => updateDraft("name", event.target.value)} placeholder=${isFixed ? "Activity name" : "Task name"} /></label>
+          ` : null}
+          ${isFixed && step === 1 ? html`
+            <fieldset className="guided-question"><legend>Which days does it happen?</legend><div className="weekday-toggle-row">
+              ${WEEKDAY_LABELS.map((day, dayIndex) => html`<button key=${day} type="button" className=${cx("choice-chip weekday-chip", draft.days.includes(dayIndex) && "is-selected")} aria-pressed=${draft.days.includes(dayIndex)} onClick=${() => updateDraft("days", draft.days.includes(dayIndex) ? draft.days.filter((value) => value !== dayIndex) : [...draft.days, dayIndex].sort())}>${day}</button>`)}
+            </div></fieldset>
+          ` : null}
+          ${isFixed && step === 2 ? html`<label className="guided-question"><strong>When does it start?</strong><input autoFocus className="planning-input" type="time" value=${draft.startTime} onInput=${(event) => updateDraft("startTime", event.target.value)} /></label>` : null}
+          ${((isFixed && step === 3) || (!isFixed && step === 1)) ? html`
+            <label className="guided-question"><strong>How long does it take?</strong><select autoFocus className="planning-input" value=${draft.durationMinutes} onChange=${(event) => updateDraft("durationMinutes", event.target.value)}><option value="">Choose duration</option>${[5, 10, 15, 20, 30, 45, 60, 90, 120].map((minutes) => html`<option value=${String(minutes)}>${formatDurationFromMinutes(minutes)}</option>`)}</select></label>
+          ` : null}
+          ${!isFixed && step === 2 ? html`<label className="guided-question"><strong>What day should VIRELI plan it for?</strong><input autoFocus className="planning-input" type="date" value=${draft.targetDate} onInput=${(event) => updateDraft("targetDate", event.target.value)} /></label>` : null}
+          ${step === steps.length - 1 ? html`
+            <div className="guided-review"><p className="eyebrow">Review</p><h2 className="font-display">${draft.name}</h2>
+              ${isFixed ? html`<p>${draft.days.map((day) => WEEKDAY_LABELS[day]).join(", ")} · ${formatTimeLabel(draft.startTime)} · ${formatDurationFromMinutes(Number(draft.durationMinutes))}</p>` : html`<p>${formatShortDate(draft.targetDate)} · ${formatDurationFromMinutes(Number(draft.durationMinutes))}</p>`}
+            </div>
+          ` : null}
+          ${error ? html`<${motion.p} className="auth-inline-error" role="alert" initial=${{ opacity: 0, y: -5 }} animate=${{ opacity: 1, y: 0 }}>${error}</${motion.p}>` : null}
+          <div className="guided-actions">
+            ${step > 0 ? html`<button type="button" className="secondary-button" onClick=${() => { setError(""); setStep((current) => current - 1); }}>Back</button>` : html`<span></span>`}
+            ${step < steps.length - 1 ? html`<button type="button" className="primary-button" onClick=${goNext}>Continue</button>` : html`<button type="button" className="primary-button" onClick=${() => { const result = onSave(draft); if (!result?.ok) setError(result?.message || "This could not be saved."); }}> ${isEditing ? "Save Changes" : isFixed ? "Add Activity" : "Add Task"}</button>`}
+          </div>
+        </${motion.div}>
+      </${AnimatePresence}>
+      <${AnimatePresence}>${showDiscard ? html`<${motion.div} className="confirm-overlay" initial=${{ opacity: 0 }} animate=${{ opacity: 1 }} exit=${{ opacity: 0 }}><${motion.div} role="dialog" aria-modal="true" aria-labelledby="discard-title" className="confirm-dialog" initial=${{ opacity: 0, scale: 0.97, y: 8 }} animate=${{ opacity: 1, scale: 1, y: 0 }} exit=${{ opacity: 0, scale: 0.97, y: 8 }}><h2 id="discard-title" className="font-display">Discard your changes?</h2><p>Your unfinished answers will not be saved.</p><div className="guided-actions"><button type="button" className="secondary-button" onClick=${() => setShowDiscard(false)}>Continue Editing</button><button type="button" className="primary-button" onClick=${onCancel}>Discard Changes</button></div></${motion.div}></${motion.div}>` : null}</${AnimatePresence}>
+    </${motion.section}>
+  `;
+}
+
 function RoutineTab({
   routineDraft,
-  routine,
-  homeworkItems,
-  calendarTasks,
-  onRoutineChange,
-  onRoutineActivityChange,
-  onRoutineActivityAdd,
-  onRoutineQuickAdd,
-  onRoutineActivityRemove,
-  onSaveRoutine,
+  onFixedActivitySave,
+  onFixedActivityDelete,
+  onMiscTaskSave,
+  onMiscTaskDelete,
   onGenerateDayPlan,
   onMoveDayPlanBlock,
   onMarkDayPlanBlockComplete,
   routineValidationMessage = "",
   dayPlanMessage = "",
 }) {
+  const [flow, setFlow] = useState(null);
   const today = getDateInputValue();
   const fixedActivities = (routineDraft.fixedActivities || []).slice(0, 2);
   const miscTasks = routineDraft.miscTasks || [];
   const todayPlan = ((routineDraft.dayPlans || {})[today] || []).map(normalizeDayPlanBlock);
   const fixedCount = fixedActivities.filter((activity) => activity.name).length;
 
-  function updateFixedActivities(nextActivities) {
-    onRoutineChange("fixedActivities", nextActivities.slice(0, 2));
-  }
-
-  function updateFixedActivity(index, field, value) {
-    const nextActivities = [...fixedActivities];
-    nextActivities[index] = normalizeFixedActivity({ ...(nextActivities[index] || {}), [field]: value }, index);
-    updateFixedActivities(nextActivities);
-  }
-
-  function addFixedActivity() {
-    if (fixedActivities.length >= 2) {
-      return;
-    }
-    updateFixedActivities([
-      ...fixedActivities,
-      normalizeFixedActivity({ id: makeId("fixed-activity"), name: "", startTime: "", durationMinutes: "" }),
-    ]);
-  }
-
-  function removeFixedActivity(index) {
-    updateFixedActivities(fixedActivities.filter((_, activityIndex) => activityIndex !== index));
-  }
-
-  function updateMiscTasks(nextTasks) {
-    onRoutineChange("miscTasks", nextTasks.map(normalizeMiscTask).slice(0, 40));
-  }
-
-  function addMiscTask() {
-    updateMiscTasks([
-      ...miscTasks,
-      normalizeMiscTask({ id: makeId("misc-task"), name: "", durationMinutes: "30" }),
-    ]);
-  }
-
-  function updateMiscTask(index, field, value) {
-    const nextTasks = [...miscTasks];
-    nextTasks[index] = normalizeMiscTask({ ...(nextTasks[index] || {}), [field]: value }, index);
-    updateMiscTasks(nextTasks);
-  }
-
-  function removeMiscTask(index) {
-    updateMiscTasks(miscTasks.filter((_, taskIndex) => taskIndex !== index));
-  }
+  if (flow) return html`<${GuidedRoutineFlow} kind=${flow.kind} initialValue=${flow.value} onCancel=${() => setFlow(null)} onSave=${(draft) => { const result = flow.kind === "fixed" ? onFixedActivitySave(draft) : onMiscTaskSave(draft); if (result?.ok) setFlow(null); return result; }} />`;
 
   return html`
     <${motion.section}
@@ -5030,41 +5098,14 @@ function RoutineTab({
         <article className="feature-card my-routine-section">
           <div className="card-topline card-topline-simple">
             <span className="mood-chip">Fixed Daily Activities</span>
-            <button type="button" className="secondary-button day27-add-button" aria-label="Add main task" title="Add main task" onClick=${addFixedActivity} disabled=${fixedActivities.length >= 2}>+</button>
+            <button type="button" className="secondary-button day27-add-button" aria-label="Add fixed activity" title="Add fixed activity" onClick=${() => setFlow({ kind: "fixed", value: null })} disabled=${fixedActivities.length >= 2}>+</button>
           </div>
           <h2 className="font-display">Same time every day</h2>
           <p>Choose up to two activities VIRELI should always protect.</p>
           <div className="my-routine-list">
             ${fixedActivities.length
-              ? fixedActivities.map((activity, index) => html`
-                  <div key=${activity.id || `fixed-${index}`} className="routine-editor-row day27-fixed-editor">
-                    <label className="field-stack">
-                      <span>Activity name</span>
-                      <input className="planning-input" value=${activity.name} onInput=${(event) => updateFixedActivity(index, "name", event.target.value)} placeholder="Piano, workout, reading" />
-                    </label>
-                    <label className="field-stack">
-                      <span>Start time</span>
-                      <input className="planning-input" type="time" value=${activity.startTime} onInput=${(event) => updateFixedActivity(index, "startTime", event.target.value)} />
-                    </label>
-                    <label className="field-stack">
-                      <span>Duration</span>
-                      <select className="planning-input" value=${activity.durationMinutes} onChange=${(event) => updateFixedActivity(index, "durationMinutes", event.target.value)}>
-                        <option value="">Choose duration</option>
-                        ${[5, 10, 15, 20, 30, 45, 60, 90, 120].map((minutes) => html`<option key=${minutes} value=${String(minutes)}>${formatDurationFromMinutes(minutes)}</option>`)}
-                      </select>
-                    </label>
-                    <button type="button" className="secondary-button" onClick=${() => removeFixedActivity(index)}>Delete</button>
-                    <div className="weekday-toggle-row day27-weekdays" role="group" aria-label=${`Days for ${activity.name || "main task"}`}>
-                      ${WEEKDAY_LABELS.map((day, dayIndex) => html`
-                        <button key=${`${activity.id}-${day}`} type="button" className=${cx("choice-chip weekday-chip", activity.days?.includes(dayIndex) && "is-selected")}
-                          aria-pressed=${Boolean(activity.days?.includes(dayIndex))}
-                          onClick=${() => {
-                            const days = activity.days || [0, 1, 2, 3, 4, 5, 6];
-                            updateFixedActivity(index, "days", days.includes(dayIndex) ? days.filter((value) => value !== dayIndex) : [...days, dayIndex].sort());
-                          }}>${day}</button>
-                      `)}
-                    </div>
-                  </div>
+              ? fixedActivities.map((activity) => html`
+                  <div key=${activity.id} className="routine-summary-row"><button type="button" className="routine-row-main" onClick=${() => setFlow({ kind: "fixed", value: activity })}><strong>${activity.name}</strong><span>${activity.days.map((day) => WEEKDAY_LABELS[day]).join(", ")} · ${formatTimeLabel(activity.startTime)} · ${formatDurationFromMinutes(Number(activity.durationMinutes))}</span></button><button type="button" className="text-link-button" onClick=${() => onFixedActivityDelete(activity.id)}>Delete</button></div>
                 `)
               : html`<p className="soft-note-inline">No fixed daily activities yet.</p>`}
           </div>
@@ -5074,28 +5115,14 @@ function RoutineTab({
         <article className="feature-card my-routine-section">
           <div className="card-topline card-topline-simple">
             <span className="mood-chip">Miscellaneous Tasks</span>
-            <button type="button" className="secondary-button day27-add-button" aria-label="Add miscellaneous task" title="Add miscellaneous task" onClick=${addMiscTask}>+</button>
+            <button type="button" className="secondary-button day27-add-button" aria-label="Add miscellaneous task" title="Add miscellaneous task" onClick=${() => setFlow({ kind: "misc", value: null })}>+</button>
           </div>
           <h2 className="font-display">Flexible things to fit in</h2>
           <p>Add tasks without choosing an exact time. VIRELI can place them when you generate a Day Plan.</p>
           <div className="my-routine-list">
             ${miscTasks.length
-              ? miscTasks.map((task, index) => html`
-                  <div key=${task.id || `misc-${index}`} className="routine-editor-row routine-editor-row-compact">
-                    <label className="field-stack">
-                      <span>Task name</span>
-                      <input className="planning-input" value=${task.name} onInput=${(event) => updateMiscTask(index, "name", event.target.value)} placeholder="Homework, clean room, practice" />
-                    </label>
-                    <label className="field-stack">
-                      <span>Duration</span>
-                      <select className="planning-input" value=${task.durationMinutes} onChange=${(event) => updateMiscTask(index, "durationMinutes", event.target.value)}>
-                        <option value="">Choose duration</option>
-                        ${[5, 10, 15, 20, 30, 45, 60, 90, 120].map((minutes) => html`<option key=${minutes} value=${String(minutes)}>${formatDurationFromMinutes(minutes)}</option>`)}
-                      </select>
-                    </label>
-                    <span className=${cx("status-pill", task.status === DAY_PLAN_STATUS.missed && "is-missed")}>${task.status || "Open"}</span>
-                    <button type="button" className="secondary-button" onClick=${() => removeMiscTask(index)}>Delete</button>
-                  </div>
+              ? miscTasks.map((task) => html`
+                  <div key=${task.id} className="routine-summary-row"><button type="button" className="routine-row-main" onClick=${() => setFlow({ kind: "misc", value: task })}><strong>${task.name}</strong><span>${task.targetDate ? `${formatShortDate(task.targetDate)} · ` : ""}${formatDurationFromMinutes(Number(task.durationMinutes))} · ${task.status || "Open"}</span></button><button type="button" className="text-link-button" onClick=${() => onMiscTaskDelete(task.id)}>Delete</button></div>
                 `)
               : html`<p className="soft-note-inline">No miscellaneous tasks yet.</p>`}
           </div>
@@ -5128,7 +5155,6 @@ function RoutineTab({
             : html`<p className="soft-note-inline">No Day Plan generated for today.</p>`}
           <div className="card-footer-row">
             <button type="button" className="primary-button" onClick=${() => onGenerateDayPlan(today)}>Generate Day Plan</button>
-            <button type="button" className="secondary-button" onClick=${onSaveRoutine}>Save My Routine</button>
           </div>
         </article>
       </div>
@@ -5877,6 +5903,75 @@ function DictationButton({ label = "Dictate", onTranscript }) {
   `;
 }
 
+function GuidedBlockoutFlow({ initialValue, occurrenceDate, editScope = "all", onCancel, onSave }) {
+  const normalized = normalizeBlockout(initialValue || { id: makeId("blockout"), groupId: makeId("blockout-group"), dates: occurrenceDate ? [occurrenceDate] : [], days: [], kind: "unavailable" });
+  const [draft, setDraft] = useState(() => ({
+    ...normalized,
+    dates: editScope === "one" && occurrenceDate ? [occurrenceDate] : normalized.dates,
+    days: editScope === "one" ? [] : normalized.days,
+    selectionMode: editScope === "one" ? "dates" : normalized.days.length ? "weekdays" : "dates",
+    editScope,
+    occurrenceDate,
+  }));
+  const [step, setStep] = useState(0);
+  const [monthAnchor, setMonthAnchor] = useState(() => new Date(`${(occurrenceDate || getDateInputValue()).slice(0, 7)}-01T12:00:00`));
+  const [error, setError] = useState("");
+  const [showDiscard, setShowDiscard] = useState(false);
+  const initialSnapshot = useRef(JSON.stringify(draft));
+  const steps = ["Dates or weekdays", "Availability", "Start time", "End time", "Review"];
+  const isDirty = JSON.stringify(draft) !== initialSnapshot.current;
+  const monthDates = getMonthGridDates(monthAnchor);
+
+  useEffect(() => {
+    const warn = (event) => { if (isDirty) { event.preventDefault(); event.returnValue = ""; } };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [isDirty]);
+
+  useEffect(() => {
+    window.__VIRELI_UNSAVED_FLOW__ = isDirty;
+    return () => { window.__VIRELI_UNSAVED_FLOW__ = false; };
+  }, [isDirty]);
+
+  function validateStep() {
+    if (step === 0 && draft.selectionMode === "dates" && !draft.dates.length) return "Choose at least one date.";
+    if (step === 0 && draft.selectionMode === "weekdays" && !draft.days.length) return "Choose at least one weekday.";
+    if (step === 2 && !draft.startTime) return "Choose a start time.";
+    if (step === 3 && (!draft.endTime || timeToMinutes(draft.endTime) <= timeToMinutes(draft.startTime))) return "End time must be after start time.";
+    return "";
+  }
+
+  function next() {
+    const message = validateStep();
+    if (message) { setError(message); return; }
+    setError("");
+    setStep((current) => Math.min(steps.length - 1, current + 1));
+  }
+
+  function toggleDate(dateValue) {
+    setDraft((current) => ({ ...current, dates: current.dates.includes(dateValue) ? current.dates.filter((value) => value !== dateValue) : [...current.dates, dateValue].sort(), days: [] }));
+  }
+
+  return html`
+    <${motion.section} className="guided-flow blockout-guided-flow" initial=${{ opacity: 0, x: 18 }} animate=${{ opacity: 1, x: 0 }} exit=${{ opacity: 0, x: -18 }} transition=${{ duration: 0.25 }}>
+      <header className="guided-flow-header"><button type="button" className="secondary-button" onClick=${() => isDirty ? setShowDiscard(true) : onCancel()}>← Exit</button><div><span>${initialValue ? "Edit" : "Create"} Blockout</span><small>${step + 1} of ${steps.length}</small></div></header>
+      <div className="guided-progress"><span style=${{ width: `${((step + 1) / steps.length) * 100}%` }}></span></div>
+      <${AnimatePresence} mode="wait" initial=${false}><${motion.div} key=${step} className="guided-step" initial=${{ opacity: 0, x: 16 }} animate=${{ opacity: 1, x: 0 }} exit=${{ opacity: 0, x: -16 }} transition=${{ duration: 0.25 }}>
+        ${step === 0 ? html`<div className="guided-question"><strong>When should this Blockout apply?</strong><div className="segmented-control"><button type="button" className=${cx(draft.selectionMode === "dates" && "is-active")} onClick=${() => setDraft({ ...draft, selectionMode: "dates", days: [] })}>Specific dates</button><button type="button" className=${cx(draft.selectionMode === "weekdays" && "is-active")} onClick=${() => setDraft({ ...draft, selectionMode: "weekdays", dates: [] })}>Recurring weekdays</button></div>
+          ${draft.selectionMode === "weekdays" ? html`<div className="weekday-toggle-row">${WEEKDAY_LABELS.map((day, dayIndex) => html`<button type="button" className=${cx("choice-chip weekday-chip", draft.days.includes(dayIndex) && "is-selected")} aria-pressed=${draft.days.includes(dayIndex)} onClick=${() => setDraft({ ...draft, days: draft.days.includes(dayIndex) ? draft.days.filter((value) => value !== dayIndex) : [...draft.days, dayIndex].sort() })}>${day}</button>`)}</div>` : html`<div className="blockout-date-picker"><div className="calendar-month-controls"><button type="button" className="secondary-button" aria-label="Previous month" onClick=${() => setMonthAnchor(new Date(monthAnchor.getFullYear(), monthAnchor.getMonth() - 1, 1))}>‹</button><strong>${getMonthLabel(monthAnchor)}</strong><button type="button" className="secondary-button" aria-label="Next month" onClick=${() => setMonthAnchor(new Date(monthAnchor.getFullYear(), monthAnchor.getMonth() + 1, 1))}>›</button></div><div className="mini-month-grid">${WEEKDAY_LABELS.map((day) => html`<span className="month-weekday">${day}</span>`)}${monthDates.map((dateInfo, index) => dateInfo.isBlank ? html`<span className="is-blank" key=${`blank-${index}`}></span>` : html`<button type="button" className=${cx("mini-date", draft.dates.includes(dateInfo.value) && "is-selected", dateInfo.isToday && "is-today")} aria-pressed=${draft.dates.includes(dateInfo.value)} onClick=${() => toggleDate(dateInfo.value)}>${dateInfo.day}</button>`)}</div></div>`}
+        </div>` : null}
+        ${step === 1 ? html`<fieldset className="guided-question"><legend>What does this time mean?</legend><div className="account-choice-actions"><button type="button" className=${cx("secondary-button", draft.kind === "available" && "is-selected")} onClick=${() => setDraft({ ...draft, kind: "available" })}>Available</button><button type="button" className=${cx("secondary-button", draft.kind === "unavailable" && "is-selected")} onClick=${() => setDraft({ ...draft, kind: "unavailable" })}>Unavailable</button></div></fieldset>` : null}
+        ${step === 2 ? html`<label className="guided-question"><strong>When does it start?</strong><input autoFocus className="planning-input" type="time" value=${draft.startTime} onInput=${(event) => setDraft({ ...draft, startTime: event.target.value })} /></label>` : null}
+        ${step === 3 ? html`<label className="guided-question"><strong>When does it end?</strong><input autoFocus className="planning-input" type="time" value=${draft.endTime} onInput=${(event) => setDraft({ ...draft, endTime: event.target.value })} /></label>` : null}
+        ${step === 4 ? html`<div className="guided-review"><p className="eyebrow">Review</p><h2 className="font-display">${draft.kind === "available" ? "Available" : "Unavailable"}</h2><p>${draft.selectionMode === "dates" ? draft.dates.map(formatShortDate).join(", ") : draft.days.map((day) => WEEKDAY_LABELS[day]).join(", ")}</p><p>${formatTimeLabel(draft.startTime)}–${formatTimeLabel(draft.endTime)}</p></div>` : null}
+        ${error ? html`<p className="auth-inline-error" role="alert">${error}</p>` : null}
+        <div className="guided-actions">${step ? html`<button type="button" className="secondary-button" onClick=${() => { setError(""); setStep(step - 1); }}>Back</button>` : html`<span></span>`}${step < 4 ? html`<button type="button" className="primary-button" onClick=${next}>Continue</button>` : html`<button type="button" className="primary-button" onClick=${() => { const result = onSave({ ...draft, date: "", dates: draft.selectionMode === "dates" ? draft.dates : [], days: draft.selectionMode === "weekdays" ? draft.days : [] }); if (!result.ok) setError(result.message); }}>Save Blockout</button>`}</div>
+      </${motion.div}></${AnimatePresence}>
+      <${AnimatePresence}>${showDiscard ? html`<${motion.div} className="confirm-overlay" initial=${{ opacity: 0 }} animate=${{ opacity: 1 }} exit=${{ opacity: 0 }}><${motion.div} className="confirm-dialog" role="dialog" aria-modal="true" initial=${{ opacity: 0, scale: 0.97 }} animate=${{ opacity: 1, scale: 1 }}><h2 className="font-display">Discard your changes?</h2><div className="guided-actions"><button type="button" className="secondary-button" onClick=${() => setShowDiscard(false)}>Continue Editing</button><button type="button" className="primary-button" onClick=${onCancel}>Discard Changes</button></div></${motion.div}></${motion.div}>` : null}</${AnimatePresence}>
+    </${motion.section}>
+  `;
+}
+
 function CalendarTab({
   homeworkItems,
   calendarTasks,
@@ -5894,6 +5989,7 @@ function CalendarTab({
 }) {
   const [blockoutEditor, setBlockoutEditor] = useState(null);
   const [blockoutError, setBlockoutError] = useState("");
+  const [blockoutScopePrompt, setBlockoutScopePrompt] = useState(null);
   const today = getDateInputValue();
   const monthAnchor = calendarMonth || new Date();
   const monthDates = getMonthGridDates(monthAnchor);
@@ -5926,6 +6022,10 @@ function CalendarTab({
   const todaySummaryItems = getChronologicalDayItems({ routine, homeworkItems, calendarTasks, dateValue: today, savedClasses })
     .filter((item) => item.source !== "free")
     .slice(0, 6);
+
+  if (blockoutEditor) {
+    return html`<${GuidedBlockoutFlow} initialValue=${blockoutEditor.value} occurrenceDate=${blockoutEditor.occurrenceDate || selectedDateValue} editScope=${blockoutEditor.editScope || "all"} onCancel=${() => { setBlockoutEditor(null); setBlockoutError(""); }} onSave=${(entry) => { const result = onBlockoutSave(entry); if (result.ok) { setBlockoutEditor(null); setBlockoutError(""); } return result; }} />`;
+  }
 
   return html`
     <${motion.section}
@@ -6016,40 +6116,16 @@ function CalendarTab({
               `)}</div>` : selectedBlockouts.length ? null : html`<p>No scheduled items.</p>`}
               <div className="day27-blockout-list">${selectedBlockouts.map((blockout) => html`
                 <div key=${blockout.id} className="day27-blockout-row">
-                  <span>${blockout.kind === "available" ? "Available" : "Unavailable"} · ${formatTimeLabel(blockout.startTime)}–${formatTimeLabel(blockout.endTime)}${blockout.date ? "" : " · Weekly"}</span>
-                  <button type="button" className="text-link-button" onClick=${() => { setBlockoutEditor({ ...blockout }); setBlockoutError(""); }}>Edit</button>
-                  <button type="button" className="text-link-button" onClick=${() => { onBlockoutDelete(blockout.id); setBlockoutEditor(null); }}>Remove</button>
+                  <span>${blockout.kind === "available" ? "Available" : "Unavailable"} · ${formatTimeLabel(blockout.startTime)}–${formatTimeLabel(blockout.endTime)}${blockout.days.length ? " · Weekly" : (blockout.dates.length > 1 ? ` · ${blockout.dates.length} dates` : "")}</span>
+                  <button type="button" className="text-link-button" onClick=${() => { const connected = blockout.days.length > 1 || blockout.dates.length > 1 || (routine.blockouts || []).filter((item) => item.groupId === blockout.groupId).length > 1; if (connected) setBlockoutScopePrompt({ action: "edit", blockout }); else setBlockoutEditor({ value: blockout, occurrenceDate: selectedDateValue, editScope: "all" }); }}>Edit</button>
+                  <button type="button" className="text-link-button" onClick=${() => { const connected = blockout.days.length > 1 || blockout.dates.length > 1 || (routine.blockouts || []).filter((item) => item.groupId === blockout.groupId).length > 1; if (connected) setBlockoutScopePrompt({ action: "delete", blockout }); else onBlockoutDelete(blockout.id, { scope: "all", occurrenceDate: selectedDateValue }); }}>Remove</button>
                 </div>
               `)}</div>
+              ${blockoutScopePrompt ? html`<${motion.div} className="blockout-scope-prompt" role="dialog" aria-modal="true" initial=${{ opacity: 0, y: 8 }} animate=${{ opacity: 1, y: 0 }}><strong>${blockoutScopePrompt.action === "edit" ? "Edit" : "Remove"} this Blockout</strong><p>Should this change affect only ${formatShortDate(selectedDateValue)} or every connected day?</p><div className="guided-actions"><button type="button" className="secondary-button" onClick=${() => { const prompt = blockoutScopePrompt; setBlockoutScopePrompt(null); if (prompt.action === "edit") setBlockoutEditor({ value: prompt.blockout, occurrenceDate: selectedDateValue, editScope: "one" }); else onBlockoutDelete(prompt.blockout.id, { scope: "one", occurrenceDate: selectedDateValue }); }}>Only this day</button><button type="button" className="primary-button" onClick=${() => { const prompt = blockoutScopePrompt; setBlockoutScopePrompt(null); const groupBase = (routine.blockouts || []).find((item) => item.groupId === prompt.blockout.groupId && !item.parentGroupId) || prompt.blockout; if (prompt.action === "edit") setBlockoutEditor({ value: groupBase, occurrenceDate: selectedDateValue, editScope: "all" }); else onBlockoutDelete(prompt.blockout.id, { scope: "all", occurrenceDate: selectedDateValue }); }}>All connected days</button><button type="button" className="text-link-button" onClick=${() => setBlockoutScopePrompt(null)}>Cancel</button></div></${motion.div}>` : null}
               <button type="button" className="secondary-button day27-blockout-add" onClick=${() => {
-                setBlockoutEditor({ id: "", date: selectedDateValue, days: [], kind: "unavailable", startTime: "", endTime: "" });
+                setBlockoutEditor({ value: null, occurrenceDate: selectedDateValue, editScope: "all" });
                 setBlockoutError("");
               }}>+ Blockout</button>
-              ${blockoutEditor
-                ? html`<form className="day27-blockout-editor" onSubmit=${(event) => {
-                    event.preventDefault();
-                    const result = onBlockoutSave(blockoutEditor);
-                    if (result.ok) { setBlockoutEditor(null); setBlockoutError(""); }
-                    else setBlockoutError(result.message);
-                  }}>
-                    <label>Meaning<select className="planning-input" value=${blockoutEditor.kind} onChange=${(event) => setBlockoutEditor({ ...blockoutEditor, kind: event.target.value })}>
-                      <option value="unavailable">Unavailable</option><option value="available">Available</option>
-                    </select></label>
-                    <label>Start<input className="planning-input" type="time" value=${blockoutEditor.startTime} onInput=${(event) => setBlockoutEditor({ ...blockoutEditor, startTime: event.target.value })} required /></label>
-                    <label>End<input className="planning-input" type="time" value=${blockoutEditor.endTime} onInput=${(event) => setBlockoutEditor({ ...blockoutEditor, endTime: event.target.value })} required /></label>
-                    <label>Repeat<select className="planning-input" value=${blockoutEditor.date ? "once" : "weekly"} onChange=${(event) => setBlockoutEditor(event.target.value === "once"
-                      ? { ...blockoutEditor, date: selectedDateValue, days: [] }
-                      : { ...blockoutEditor, date: "", days: [getWeekdayIndexForDate(selectedDateValue)] })}>
-                      <option value="once">This date</option><option value="weekly">Repeat weekly</option>
-                    </select></label>
-                    ${!blockoutEditor.date ? html`<div className="weekday-toggle-row" role="group" aria-label="Repeat weekdays">
-                      ${WEEKDAY_LABELS.map((day, dayIndex) => html`<button key=${day} type="button" className=${cx("choice-chip weekday-chip", blockoutEditor.days.includes(dayIndex) && "is-selected")}
-                        aria-pressed=${blockoutEditor.days.includes(dayIndex)} onClick=${() => setBlockoutEditor({ ...blockoutEditor, days: blockoutEditor.days.includes(dayIndex)
-                          ? blockoutEditor.days.filter((value) => value !== dayIndex) : [...blockoutEditor.days, dayIndex].sort() })}>${day}</button>`)}
-                    </div>` : null}
-                    ${blockoutError ? html`<p className="auth-inline-error" role="alert">${blockoutError}</p>` : null}
-                    <div className="day27-blockout-actions"><button type="submit" className="primary-button">Save Blockout</button><button type="button" className="secondary-button" onClick=${() => setBlockoutEditor(null)}>Cancel</button></div>
-                  </form>` : null}
             </${motion.div}>
           ` : null}
           <div className="month-calendar-grid">
@@ -6603,6 +6679,10 @@ function DashboardShell({
   onRoutineQuickAdd,
   onRoutineActivityRemove,
   onSaveRoutine,
+  onFixedActivitySave,
+  onFixedActivityDelete,
+  onMiscTaskSave,
+  onMiscTaskDelete,
   onGenerateDayPlan,
   onMoveDayPlanBlock,
   onMarkDayPlanBlockComplete,
@@ -6644,6 +6724,11 @@ function DashboardShell({
   let activeView = null;
   const primaryNavItems = getPrimaryNavItems();
   const pageLabel = [...NAV_ITEMS, { id: "routine", label: "My Routine" }, SETTINGS_NAV_ITEM].find((item) => item.id === activeTab)?.label || "Home";
+  const requestPageChange = (nextTab) => {
+    if (window.__VIRELI_UNSAVED_FLOW__ && !window.confirm("Discard your unsaved changes and leave this screen?")) return;
+    window.__VIRELI_UNSAVED_FLOW__ = false;
+    onTabChange(nextTab);
+  };
 
   if (activeTab === "home") {
     activeView = html`
@@ -6666,17 +6751,10 @@ function DashboardShell({
     activeView = html`
       <${RoutineTab}
         routineDraft=${routineDraft}
-        routine=${routine}
-        homeworkItems=${homeworkItems}
-        calendarTasks=${calendarTasks}
-        onRoutineChange=${onRoutineChange}
-        onRoutineWorkloadSelect=${onRoutineWorkloadSelect}
-        onRoutineIntervalSelect=${onRoutineIntervalSelect}
-        onRoutineActivityChange=${onRoutineActivityChange}
-        onRoutineActivityAdd=${onRoutineActivityAdd}
-        onRoutineQuickAdd=${onRoutineQuickAdd}
-        onRoutineActivityRemove=${onRoutineActivityRemove}
-        onSaveRoutine=${onSaveRoutine}
+        onFixedActivitySave=${onFixedActivitySave}
+        onFixedActivityDelete=${onFixedActivityDelete}
+        onMiscTaskSave=${onMiscTaskSave}
+        onMiscTaskDelete=${onMiscTaskDelete}
         onGenerateDayPlan=${onGenerateDayPlan}
         onMoveDayPlanBlock=${onMoveDayPlanBlock}
         onMarkDayPlanBlockComplete=${onMarkDayPlanBlockComplete}
@@ -6779,7 +6857,7 @@ function DashboardShell({
     return html`
       <${motion.section} className="day27-routine-workspace" initial=${{ opacity: 0 }} animate=${{ opacity: 1 }} exit=${{ opacity: 0 }} transition=${{ duration: 0.25 }}>
         <header className="day27-workspace-header">
-          <button type="button" className="secondary-button" onClick=${() => onTabChange(previousPageRef.current)} aria-label="Exit My Routine">← Exit</button>
+          <button type="button" className="secondary-button" onClick=${() => requestPageChange(previousPageRef.current)} aria-label="Exit My Routine">← Exit</button>
           <span className="font-display">My Routine</span>
         </header>
         <main className="day27-workspace-content">${activeView}</main>
@@ -6836,7 +6914,7 @@ function DashboardShell({
                     className=${cx("nav-button", activeTab === item.id && "is-active")}
                     aria-label=${item.label}
                     onClick=${() => {
-                      onTabChange(item.id);
+                      requestPageChange(item.id);
                       setMobileNavOpen(false);
                     }}
                   >
@@ -6851,7 +6929,7 @@ function DashboardShell({
                 className=${cx("nav-button settings-nav-button", activeTab === "settings" && "is-active")}
                 aria-label="Settings"
                 onClick=${() => {
-                  onTabChange("settings");
+                  requestPageChange("settings");
                   setMobileNavOpen(false);
                 }}
               >
@@ -6871,7 +6949,7 @@ function DashboardShell({
             mobileOpen=${mobileRoutineOpen}
             onCloseMobile=${() => setMobileRoutineOpen(false)}
             onOpenRoutine=${() => {
-              onTabChange("routine");
+              requestPageChange("routine");
               setMobileRoutineOpen(false);
             }}
           />
@@ -6910,7 +6988,7 @@ function App() {
   const [accountPassword, setAccountPassword] = useState("");
   const [accountPasswordConfirm, setAccountPasswordConfirm] = useState("");
   const [accountPasswordVisible, setAccountPasswordVisible] = useState(false);
-  const [accountStatus, setAccountStatus] = useState("idle");
+  const [accountStatus, setAccountStatus] = useState("checking-session");
   const [accountError, setAccountError] = useState("");
   const [passwordDraft, setPasswordDraft] = useState({
     currentPassword: "",
@@ -6968,7 +7046,7 @@ function App() {
     setUndoToast({ id, message, undoAction });
     window.setTimeout(() => {
       setUndoToast((currentToast) => (currentToast?.id === id ? null : currentToast));
-    }, 7000);
+    }, 6000);
   }
 
   function handleUndoToast() {
@@ -7127,6 +7205,31 @@ function App() {
   }
 
   useEffect(() => {
+    if (!/^https?:$/.test(window.location.protocol)) {
+      setAccountStatus("idle");
+      setAccountError("Open VIRELI through http://localhost:8001 to sign in securely.");
+      return;
+    }
+    let cancelled = false;
+    fetch("/api/auth/me", { credentials: "same-origin" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("VIRELI could not check your account session.");
+        return response.json();
+      })
+      .then((payload) => {
+        if (cancelled) return;
+        if (payload.authenticated && payload.user) completeAuthenticatedProfile(payload.user, "vireli-account", false);
+        setAccountStatus("idle");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setAccountStatus("idle");
+        setAccountError(error.message || "VIRELI could not connect to the account server.");
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
     writePersistentArray(RECOMMENDATION_STORAGE_KEY, []);
     writePersistentArray(SCENARIO_AGENT_STORAGE_KEY, []);
     writePersistentArray(ASK_HISTORY_STORAGE_KEY, []);
@@ -7276,14 +7379,6 @@ function App() {
     setAccountUsername("");
     setAccountPassword("");
     setAccountPasswordConfirm("");
-  }
-
-  function handleContinueToVireli() {
-    setProfileStepComplete(true);
-    setMoodCheckInComplete(false);
-    setLaunchSetupStep(1);
-    setLaunchSetupComplete(false);
-    setActiveTab("home");
   }
 
   async function handleAccountUsernameContinue(event) {
@@ -7527,45 +7622,6 @@ function App() {
     });
   }
 
-  function handleContinueAsGuest() {
-    const now = new Date().toISOString();
-    activatePlannerScope("guest");
-    const savedProfile = loadProfile();
-    restorePlannerState();
-    const nextProfile = {
-      ...EMPTY_PROFILE,
-      ...savedProfile,
-      connected: false,
-      guest: true,
-      name: savedProfile.name || "",
-      authMode: "guest",
-      classSetupSkipped: savedProfile.classSetupSkipped,
-      routineSetupSkipped: savedProfile.routineSetupSkipped,
-      primaryUse: savedProfile.primaryUse,
-      setupComplete: Boolean(savedProfile.setupComplete),
-      setupStep: savedProfile.setupComplete ? 2 : Math.max(1, Math.min(2, Number(savedProfile.setupStep || 1))),
-      timezone: savedProfile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
-      schedulingPreferences: {
-        ...EMPTY_PROFILE.schedulingPreferences,
-        ...(savedProfile.schedulingPreferences || {}),
-      },
-      createdAt: savedProfile.createdAt || now,
-      updatedAt: now,
-    };
-
-    setProfile(nextProfile);
-    setProfileDraft({ ...nextProfile });
-    setProfileStepComplete(true);
-    setMoodCheckInComplete(false);
-    setLaunchSetupStep(1);
-    setLaunchSetupComplete(Boolean(savedProfile.setupComplete));
-    setAccountStep("choice");
-    setAccountUsername("");
-    setAccountPassword("");
-    setAccountPasswordConfirm("");
-    setAccountError("");
-  }
-
   function handleDisconnectProfile() {
     if (/^https?:$/.test(window.location.protocol)) {
       fetch("/api/auth/logout", {
@@ -7728,12 +7784,108 @@ function App() {
     }
   }
 
+  function handleFixedActivitySave(entry) {
+    const activity = normalizeFixedActivity({ ...entry, updatedAt: new Date().toISOString(), createdAt: entry.createdAt || new Date().toISOString() });
+    const activityRange = getTimeRange(activity);
+    const planConflict = Object.entries(routine.dayPlans || {}).find(([dateValue, blocks]) => activity.days.includes(getWeekdayIndexForDate(dateValue)) && blocks.some((block) => {
+      if ([DAY_PLAN_STATUS.complete, DAY_PLAN_STATUS.missed].includes(block.status)) return false;
+      const blockRange = getTimeRange(block);
+      return activityRange && blockRange && rangesOverlap(activityRange.startMinutes, activityRange.endMinutes, blockRange.startMinutes, blockRange.endMinutes);
+    }));
+    if (planConflict) return { ok: false, message: `This time overlaps a saved Day Plan on ${formatShortDate(planConflict[0])}. Move that task first.` };
+    const existing = (routine.fixedActivities || []).some((item) => item.id === activity.id);
+    if (!existing && (routine.fixedActivities || []).length >= 2) return { ok: false, message: "VIRELI keeps fixed activities to two so your routine stays realistic." };
+    const fixedActivities = existing
+      ? (routine.fixedActivities || []).map((item) => item.id === activity.id ? activity : item)
+      : [...(routine.fixedActivities || []), activity];
+    const nextDraft = { ...routine, fixedActivities };
+    const validation = validateRoutineDraft(nextDraft);
+    if (!validation.ok) return validation;
+    const nextRoutine = persistRoutineDraft(nextDraft, { markSetupComplete: true });
+    if (!nextRoutine) return { ok: false, message: "This activity conflicts with your current schedule." };
+    setDayPlanMessage(existing ? "Activity updated." : "Activity added.");
+    return { ok: true };
+  }
+
+  function handleMiscTaskSave(entry) {
+    const task = normalizeMiscTask({ ...entry, updatedAt: new Date().toISOString(), createdAt: entry.createdAt || new Date().toISOString() });
+    const existing = (routine.miscTasks || []).some((item) => item.id === task.id);
+    const miscTasks = existing
+      ? (routine.miscTasks || []).map((item) => item.id === task.id ? task : item)
+      : [...(routine.miscTasks || []), task];
+    const dayPlansWithoutTask = Object.fromEntries(Object.entries(routine.dayPlans || {}).map(([dateValue, blocks]) => [dateValue, blocks.filter((block) => block.taskId !== task.id)]));
+    let nextDraft = { ...routine, miscTasks, dayPlans: dayPlansWithoutTask };
+    const generation = generateDayPlan(nextDraft, task.targetDate);
+    if (generation.ok) {
+      const scheduled = generation.blocks.find((block) => block.taskId === task.id);
+      nextDraft = {
+        ...nextDraft,
+        miscTasks: miscTasks.map((item) => item.id === task.id ? { ...item, scheduledDate: task.targetDate, scheduledTime: scheduled?.startTime || "" } : item),
+        dayPlans: { ...(nextDraft.dayPlans || {}), [task.targetDate]: generation.blocks },
+      };
+    }
+    const validation = validateRoutineDraft(nextDraft);
+    if (!validation.ok) return validation;
+    const nextRoutine = persistRoutineDraft(nextDraft, { markSetupComplete: true });
+    if (!nextRoutine) return { ok: false, message: "This task could not be saved." };
+    const scheduled = generation.ok && generation.blocks.some((block) => block.taskId === task.id);
+    if (scheduled) setDayPlanMessage(`${task.name} was added to ${formatShortDate(task.targetDate)}.`);
+    else {
+      const windows = getAvailableSchedulingWindows(nextDraft, task.targetDate);
+      const longestWindow = windows.reduce((longest, windowBlock) => Math.max(longest, windowBlock.endMinutes - windowBlock.startMinutes), 0);
+      const fixedCount = getFixedActivityBlocks(nextDraft, task.targetDate).length;
+      const unavailableCount = getBlockoutBlocks(nextDraft, task.targetDate).filter((block) => block.kind === "unavailable").length;
+      const reason = !windows.length ? "No available time remains that day."
+        : Number(task.durationMinutes) > longestWindow ? `The ${formatDurationFromMinutes(Number(task.durationMinutes))} task is longer than every available opening.`
+          : fixedCount ? "A fixed activity occupies the remaining opening."
+            : unavailableCount ? "An Unavailable Blockout prevents placement." : "No conflict-free opening remains.";
+      setDayPlanMessage(`${task.name} was saved but left unscheduled. ${reason}`);
+    }
+    return { ok: true };
+  }
+
+  function deleteRoutineItem(kind, id) {
+    const field = kind === "fixed" ? "fixedActivities" : "miscTasks";
+    const originalRoutine = routine;
+    const currentItems = routine[field] || [];
+    const index = currentItems.findIndex((item) => item.id === id);
+    if (index < 0) return;
+    const deleted = currentItems[index];
+    const nextDayPlans = kind === "misc"
+      ? Object.fromEntries(Object.entries(routine.dayPlans || {}).map(([dateValue, blocks]) => [dateValue, blocks.filter((block) => block.taskId !== id)]))
+      : routine.dayPlans;
+    const next = saveRoutine({ ...routine, [field]: currentItems.filter((item) => item.id !== id), dayPlans: nextDayPlans });
+    setRoutine(next);
+    setRoutineDraft(next);
+    const scopeAtDelete = activePlannerScope;
+    showUndoToast(`${deleted.name} deleted — Undo`, () => {
+      if (activePlannerScope !== scopeAtDelete) return;
+      const restored = saveRoutine(originalRoutine);
+      setRoutine(restored);
+      setRoutineDraft(restored);
+    });
+  }
+
   function handleBlockoutSave(entry) {
-    const blockout = normalizeBlockout({ ...entry, id: entry.id || makeId("blockout") });
-    if (!blockout.startTime || !blockout.endTime || (!blockout.date && !blockout.days.length)) {
+    const original = (routine.blockouts || []).find((item) => item.id === entry.id);
+    let blockout = normalizeBlockout({ ...entry, id: entry.id || makeId("blockout"), groupId: entry.groupId || makeId("blockout-group") });
+    if (!blockout.startTime || !blockout.endTime || (!blockout.dates.length && !blockout.days.length)) {
       return { ok: false, message: "Choose a date or weekdays, plus start and end times." };
     }
-    const nextBlockouts = [...(routine.blockouts || []).filter((item) => item.id !== blockout.id), blockout];
+    let nextBlockouts = [...(routine.blockouts || []).filter((item) => original && entry.editScope === "all" ? item.groupId !== original.groupId : item.id !== blockout.id)];
+    if (original && entry.editScope === "one" && entry.occurrenceDate) {
+      const occurrenceDate = entry.occurrenceDate;
+      const remainingDates = (original.dates || []).filter((dateValue) => dateValue !== occurrenceDate);
+      const updatedOriginal = normalizeBlockout({
+        ...original,
+        dates: remainingDates,
+        date: "",
+        excludedDates: original.days.length ? [...(original.excludedDates || []), occurrenceDate] : original.excludedDates,
+      });
+      if (updatedOriginal.dates.length || updatedOriginal.days.length) nextBlockouts.push(updatedOriginal);
+      blockout = normalizeBlockout({ ...blockout, id: makeId("blockout"), groupId: original.groupId, parentGroupId: original.id, dates: [occurrenceDate], date: "", days: [], excludedDates: [] });
+    }
+    nextBlockouts.push(blockout);
     const nextDraft = { ...routine, blockouts: nextBlockouts };
     const validation = validateRoutineDraft(nextDraft);
     if (!validation.ok) return validation;
@@ -7751,13 +7903,34 @@ function App() {
     const saved = saveRoutine(nextDraft);
     setRoutine(saved);
     setRoutineDraft(saved);
+    setDayPlanMessage("Blockout saved.");
     return { ok: true, message: "" };
   }
 
-  function handleBlockoutDelete(id) {
-    const saved = saveRoutine({ ...routine, blockouts: (routine.blockouts || []).filter((item) => item.id !== id) });
+  function handleBlockoutDelete(id, options = {}) {
+    const originalBlockouts = routine.blockouts || [];
+    const deleted = originalBlockouts.find((item) => item.id === id);
+    if (!deleted) return;
+    let nextBlockouts;
+    if (options.scope === "one" && options.occurrenceDate) {
+      nextBlockouts = originalBlockouts.map((item) => {
+        if (item.id !== id) return item;
+        if ((item.dates || []).length) return normalizeBlockout({ ...item, dates: item.dates.filter((dateValue) => dateValue !== options.occurrenceDate), date: "" });
+        return normalizeBlockout({ ...item, excludedDates: [...(item.excludedDates || []), options.occurrenceDate] });
+      }).filter((item) => item.dates.length || item.days.length);
+    } else {
+      nextBlockouts = originalBlockouts.filter((item) => item.groupId !== deleted.groupId);
+    }
+    const saved = saveRoutine({ ...routine, blockouts: nextBlockouts });
     setRoutine(saved);
     setRoutineDraft(saved);
+    const scopeAtDelete = activePlannerScope;
+    showUndoToast("Blockout deleted — Undo", () => {
+      if (activePlannerScope !== scopeAtDelete) return;
+      const restored = saveRoutine({ ...routine, blockouts: originalBlockouts });
+      setRoutine(restored);
+      setRoutineDraft(restored);
+    });
   }
 
   function handleGenerateDayPlan(dateValue = getDateInputValue()) {
@@ -9162,7 +9335,6 @@ function classifyAskPlannerType(prompt) {
                   accountPasswordVisible=${accountPasswordVisible}
                   accountStatus=${accountStatus}
                   accountError=${accountError}
-                  onContinueToVireli=${handleContinueToVireli}
                   onAccountAuthModeChange=${handleAccountAuthModeChange}
                   onAccountUsernameChange=${handleAccountUsernameChange}
                   onAccountUsernameContinue=${handleAccountUsernameContinue}
@@ -9177,7 +9349,6 @@ function classifyAskPlannerType(prompt) {
                   }}
                   onAccountPasswordVisibleToggle=${() => setAccountPasswordVisible((currentValue) => !currentValue)}
                   onVireliAccountSubmit=${handleVireliAccountSubmit}
-                  onContinueAsGuest=${handleContinueAsGuest}
                 />
               `
           : !moodCheckInComplete
@@ -9204,6 +9375,7 @@ function classifyAskPlannerType(prompt) {
                   routineDraft=${routineDraft}
                   onRoutineChange=${handleRoutineChange}
                   onContinue=${handleScheduleBasicsContinue}
+                  onBack=${() => setLaunchSetupStep(1)}
                 />
               `
           : html`
@@ -9270,6 +9442,10 @@ function classifyAskPlannerType(prompt) {
                   onRoutineActivityRemove=${handleRoutineActivityRemove}
                   onRoutineQuickAdd=${handleRoutineQuickAdd}
                   onSaveRoutine=${handleSaveRoutine}
+                  onFixedActivitySave=${handleFixedActivitySave}
+                  onFixedActivityDelete=${(id) => deleteRoutineItem("fixed", id)}
+                  onMiscTaskSave=${handleMiscTaskSave}
+                  onMiscTaskDelete=${(id) => deleteRoutineItem("misc", id)}
                   onGenerateDayPlan=${handleGenerateDayPlan}
                   onMoveDayPlanBlock=${handleMoveDayPlanBlock}
                   onMarkDayPlanBlockComplete=${handleMarkDayPlanBlockComplete}
@@ -9319,14 +9495,16 @@ function classifyAskPlannerType(prompt) {
               `}
       </${AnimatePresence}>
 
+      <${AnimatePresence}>
       ${undoToast
         ? html`
-            <div className="undo-toast" role="status">
+            <${motion.div} key=${undoToast.id} className="undo-toast" role="status" initial=${{ opacity: 0, y: 14, scale: 0.98 }} animate=${{ opacity: 1, y: 0, scale: 1 }} exit=${{ opacity: 0, y: 10, scale: 0.98 }} transition=${{ duration: 0.22 }}>
               <span>${undoToast.message}</span>
               <button type="button" onClick=${handleUndoToast}>Undo</button>
-            </div>
+            </${motion.div}>
           `
         : null}
+      </${AnimatePresence}>
     </div>
   `;
 }
