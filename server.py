@@ -22,6 +22,7 @@ DEFAULT_PORT = int(os.environ.get("PORT", "8001"))
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 AUTH_DB_PATH = Path(os.environ.get("VIRELI_AUTH_DB_PATH", ROOT / "vireli_auth.sqlite3"))
 SESSION_COOKIE_NAME = "vireli_session"
+DEVICE_COOKIE_NAME = "vireli_device"
 SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 14
 EMAIL_CODE_TTL_SECONDS = 60 * 10
 EMAIL_RESEND_COOLDOWN_SECONDS = 60
@@ -128,8 +129,107 @@ def get_database_connection():
     connection.execute(
         "CREATE INDEX IF NOT EXISTS idx_email_verifications_email ON email_verifications(email)"
     )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS planner_documents (
+            user_id INTEGER PRIMARY KEY,
+            document_json TEXT NOT NULL,
+            revision INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS device_accounts (
+            device_hash TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY(device_hash, user_id),
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        """
+    )
     connection.commit()
     return connection
+
+
+def get_planner_document(user_id):
+    with get_database_connection() as connection:
+        row = connection.execute(
+            "SELECT document_json, revision, updated_at FROM planner_documents WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+    if not row:
+        return {"document": None, "revision": 0, "updatedAt": ""}
+    try:
+        document = json.loads(row["document_json"])
+    except json.JSONDecodeError:
+        document = None
+    return {"document": document, "revision": row["revision"], "updatedAt": row["updated_at"]}
+
+
+def save_planner_document(user_id, document, expected_revision):
+    if not isinstance(document, dict):
+        return False, HTTPStatus.BAD_REQUEST, {"error": "Planner document must be an object."}
+    encoded = json.dumps(document, separators=(",", ":"))
+    if len(encoded.encode("utf-8")) > 1_000_000:
+        return False, HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": "Planner data is too large."}
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    with get_database_connection() as connection:
+        row = connection.execute("SELECT revision FROM planner_documents WHERE user_id = ?", (user_id,)).fetchone()
+        current_revision = int(row["revision"]) if row else 0
+        if int(expected_revision or 0) != current_revision:
+            return False, HTTPStatus.CONFLICT, {"error": "Planner data changed on another device.", "revision": current_revision}
+        next_revision = current_revision + 1
+        if row:
+            connection.execute(
+                "UPDATE planner_documents SET document_json = ?, revision = ?, updated_at = ? WHERE user_id = ?",
+                (encoded, next_revision, now, user_id),
+            )
+        else:
+            connection.execute(
+                "INSERT INTO planner_documents (user_id, document_json, revision, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (user_id, encoded, next_revision, now, now),
+            )
+        connection.commit()
+    return True, HTTPStatus.OK, {"saved": True, "revision": next_revision, "updatedAt": now}
+
+
+def register_device_account(device_id, user_id):
+    device_hash = hashlib.sha256(str(device_id or "").encode("utf-8")).hexdigest()
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    with get_database_connection() as connection:
+        existing = connection.execute(
+            "SELECT 1 FROM device_accounts WHERE device_hash = ? AND user_id = ?",
+            (device_hash, user_id),
+        ).fetchone()
+        if existing:
+            return True
+        count = connection.execute(
+            "SELECT COUNT(*) AS total FROM device_accounts WHERE device_hash = ?",
+            (device_hash,),
+        ).fetchone()["total"]
+        if count >= 2:
+            return False
+        connection.execute(
+            "INSERT INTO device_accounts (device_hash, user_id, created_at) VALUES (?, ?, ?)",
+            (device_hash, user_id, now),
+        )
+        connection.commit()
+    return True
+
+
+def device_can_register_account(device_id):
+    device_hash = hashlib.sha256(str(device_id or "").encode("utf-8")).hexdigest()
+    with get_database_connection() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) AS total FROM device_accounts WHERE device_hash = ?",
+            (device_hash,),
+        ).fetchone()["total"]
+    return count < 2
 
 
 def row_to_user(row):
@@ -807,7 +907,11 @@ class VireliRequestHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(encoded)))
         for header, value in (extra_headers or {}).items():
-            self.send_header(header, value)
+            if isinstance(value, (list, tuple)):
+                for item in value:
+                    self.send_header(header, item)
+            else:
+                self.send_header(header, value)
         self.end_headers()
         self.wfile.write(encoded)
 
@@ -824,6 +928,26 @@ class VireliRequestHandler(SimpleHTTPRequestHandler):
         if not session_payload:
             return None
         return get_user_by_id(session_payload.get("userId"))
+
+    def get_or_create_device_id(self):
+        cookies = SimpleCookie(self.headers.get("Cookie", ""))
+        device_cookie = cookies.get(DEVICE_COOKIE_NAME)
+        if device_cookie:
+            payload = verify_session_token(device_cookie.value)
+            if payload and payload.get("deviceId"):
+                return payload["deviceId"], None
+        device_id = secrets.token_urlsafe(24)
+        now = int(time.time())
+        token = sign_session_payload({"deviceId": device_id, "iat": now, "exp": now + (60 * 60 * 24 * 365 * 10)})
+        cookie = SimpleCookie()
+        cookie[DEVICE_COOKIE_NAME] = token
+        cookie[DEVICE_COOKIE_NAME]["path"] = "/"
+        cookie[DEVICE_COOKIE_NAME]["max-age"] = str(60 * 60 * 24 * 365 * 10)
+        cookie[DEVICE_COOKIE_NAME]["httponly"] = True
+        cookie[DEVICE_COOKIE_NAME]["samesite"] = "Lax"
+        if os.environ.get("VIRELI_COOKIE_SECURE", "").strip().lower() == "true":
+            cookie[DEVICE_COOKIE_NAME]["secure"] = True
+        return device_id, cookie.output(header="").strip()
 
     def build_session_cookie_header(self, user_id):
         now = int(time.time())
@@ -871,6 +995,14 @@ class VireliRequestHandler(SimpleHTTPRequestHandler):
                     "user": user,
                 },
             )
+            return
+
+        if route == "/api/planner":
+            user = self.get_session_user()
+            if not user:
+                self.send_json(HTTPStatus.UNAUTHORIZED, {"error": "Sign in to load planner data."})
+                return
+            self.send_json(HTTPStatus.OK, get_planner_document(user["id"]))
             return
 
         super().do_GET()
@@ -928,6 +1060,11 @@ class VireliRequestHandler(SimpleHTTPRequestHandler):
             username = payload.get("username")
             password = payload.get("password")
             if route == "/api/auth/vireli/register":
+                device_id, device_cookie = self.get_or_create_device_id()
+                if not device_can_register_account(device_id):
+                    headers = {"Set-Cookie": [device_cookie]} if device_cookie else None
+                    self.send_json(HTTPStatus.FORBIDDEN, {"error": "Unable to create another account on this device."}, headers)
+                    return
                 ok, status, response_payload = create_vireli_user(username, password)
             else:
                 ok, status, response_payload = login_vireli_user(username, password)
@@ -935,7 +1072,12 @@ class VireliRequestHandler(SimpleHTTPRequestHandler):
             extra_headers = {}
             user = response_payload.get("user")
             if ok and user:
-                extra_headers["Set-Cookie"] = self.build_session_cookie_header(user["id"])
+                cookies = [self.build_session_cookie_header(user["id"])]
+                if route == "/api/auth/vireli/register":
+                    register_device_account(device_id, user["id"])
+                    if device_cookie:
+                        cookies.append(device_cookie)
+                extra_headers["Set-Cookie"] = cookies
             self.send_json(status, response_payload, extra_headers)
             return
 
@@ -1054,6 +1196,25 @@ class VireliRequestHandler(SimpleHTTPRequestHandler):
                 "error": "; ".join(errors[-2:]),
             },
         )
+
+    def do_PUT(self):
+        route = self.path.split("?", 1)[0]
+        if route != "/api/planner":
+            self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+            return
+        user = self.get_session_user()
+        if not user:
+            self.send_json(HTTPStatus.UNAUTHORIZED, {"error": "Sign in to save planner data."})
+            return
+        try:
+            payload = self.read_json_body()
+        except (ValueError, json.JSONDecodeError):
+            self.send_json(HTTPStatus.BAD_REQUEST, {"error": "Invalid JSON"})
+            return
+        _, status, response_payload = save_planner_document(
+            user["id"], payload.get("document"), payload.get("revision", 0)
+        )
+        self.send_json(status, response_payload)
 
 
 def run():

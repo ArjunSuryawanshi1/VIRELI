@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: vireli
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server.py
+    healthCheckPath: /api/config
+    envVars:
+      - key: VIRELI_ENV
+        value: production
+      - key: VIRELI_COOKIE_SECURE
+        value: "true"
+      - key: VIRELI_AUTH_DB_PATH
+        value: /var/data/vireli_auth.sqlite3
+      - key: VIRELI_SESSION_SECRET
+        generateValue: true
+    disk:
+      name: vireli-data
+      mountPath: /var/data
+      sizeGB: 1

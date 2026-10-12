@@ -1,9 +1,9 @@
-const VIRELI_CACHE = "vireli-day28-auth-availability-fix-shell-v1";
+const VIRELI_CACHE = "vireli-day29-availability-routine-shell-v3";
 const VIRELI_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=day28-auth-availability-fix-20261011",
-  "./script.js?v=day28-auth-availability-fix-20261011",
+  "./styles.css?v=day29-availability-routine-20261011c",
+  "./script.js?v=day29-availability-routine-20261011c",
   "./manifest.webmanifest",
   "./icons/vireli-icon.svg",
 ];
