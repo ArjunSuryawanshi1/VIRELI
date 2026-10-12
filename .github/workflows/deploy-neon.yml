@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ["functions/**", "tests/**", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".github/workflows/deploy-neon.yml"]
+    paths: ["functions/**", "tests/**", "tools/**", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".github/workflows/deploy-neon.yml"]
 permissions:
   contents: write
 concurrency:
@@ -33,6 +33,15 @@ jobs:
           pnpm exec neon functions get vireliapi --project-id "$NEON_PROJECT_ID" --branch br-divine-shape-b51qinmw --output json > /tmp/neon-deployment.json
       - name: Verify API and publish public endpoint
         run: node tools/configure-api.mjs /tmp/neon-deployment.json
+      - name: Test hosted authentication and persistence
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+        run: |
+          DATABASE_URL=$(pnpm exec neon connection-string br-divine-shape-b51qinmw --project-id "$NEON_PROJECT_ID" --ssl verify-full --pooled)
+          echo "::add-mask::$DATABASE_URL"
+          export DATABASE_URL
+          node tools/smoke-neon.mjs /tmp/neon-deployment.json
       - name: Update GitHub Pages configuration
         run: |
           git config user.name "github-actions[bot]"
