@@ -19,11 +19,11 @@ export function createApi(pool, { origins = ["https://arjunsuryawanshi1.github.i
     catch (error) { await client.query("ROLLBACK"); throw error; }
     finally { client.release(); }
   }
-  async function rateLimit(key) {
+  async function rateLimit(key, maximum = 20) {
     const { rows } = await pool.query(`INSERT INTO vireli_rate_limits(key, attempts, reset_at) VALUES ($1,1,now()+interval '15 minutes')
       ON CONFLICT(key) DO UPDATE SET attempts=CASE WHEN vireli_rate_limits.reset_at<now() THEN 1 ELSE vireli_rate_limits.attempts+1 END,
       reset_at=CASE WHEN vireli_rate_limits.reset_at<now() THEN now()+interval '15 minutes' ELSE vireli_rate_limits.reset_at END RETURNING attempts`, [digest(key)]);
-    if (rows[0].attempts > 20) throw new ApiError(429, "Too many attempts. Try again later.");
+    if (rows[0].attempts > maximum) throw new ApiError(429, "Too many attempts. Try again later.");
   }
   const cookie = (name, value, maxAge) => `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure ? "; Secure" : ""}`;
   return { async fetch(request) {
@@ -63,6 +63,8 @@ export function createApi(pool, { origins = ["https://arjunsuryawanshi1.github.i
       }
       const authPaths = ["/api/auth/vireli/register", "/api/auth/vireli/login", "/api/auth/vireli/check-username"];
       if (authPaths.includes(path) && request.method === "POST") {
+        const remoteAddress = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+        await rateLimit(`auth-network:${remoteAddress}`, 100);
         const username = body.username;
         if (typeof username !== "string" || !username.trim() || username.length > 128 || /[\x00-\x1f\x7f]/.test(username)) throw new ApiError(400, "Enter a valid username.");
         await rateLimit(`username:${username}`);

@@ -11,6 +11,9 @@ The Neon GitHub integration must supply the repository secret `NEON_API_KEY` and
 variable `NEON_PROJECT_ID`. Run the **Deploy VIRELI Neon API** GitHub workflow.
 It runs tests, deploys the API, checks the database connection and commits only
 the public invocation URL to `api-config.js`. Pages continues deploying `main`.
+GitHub does not trigger a Pages build for a bot-token commit alone. After the
+first endpoint update, push a normal commit or rerun the Pages deployment.
+The function URL stays stable for subsequent backend releases.
 Neon injects `DATABASE_URL`; never place it or API keys in frontend code.
 
 ## Security and compatibility
