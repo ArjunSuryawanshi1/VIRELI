@@ -207,7 +207,7 @@ function getBlankSetupRoutineDraft(baseRoutine = EMPTY_ROUTINE_DRAFT) {
   };
 }
 
-const APP_VERSION = "day29-availability-routine-20261011c";
+const APP_VERSION = "day29-neon-accounts-20261012";
 const INTRO_ANIMATION_SECONDS = 1.35;
 const INTRO_SCREEN_DURATION_MS = 3200;
 const THEME_TRANSITION_DURATION_MS = 2000;
@@ -7078,6 +7078,8 @@ function App() {
   const plannerHydratedRef = useRef(false);
   const plannerRevisionRef = useRef(0);
   const plannerSaveTimerRef = useRef(null);
+  const plannerSaveQueueRef = useRef(Promise.resolve());
+  const plannerPendingRef = useRef(null);
 
   const todayLabel = useMemo(() => formatDate(), []);
   const moodInfo = MOOD_DETAILS[moodSelection] || MOOD_DETAILS.unchecked;
@@ -7207,28 +7209,38 @@ function App() {
   useEffect(() => {
     if (!plannerHydratedRef.current || !profile.connected || !activePlannerScope.startsWith("account-")) return;
     window.clearTimeout(plannerSaveTimerRef.current);
-    plannerSaveTimerRef.current = window.setTimeout(async () => {
-      try {
-        const document = {
+    const scope = activePlannerScope;
+    plannerPendingRef.current = { scope, document: {
           version: APP_VERSION,
           profile: { ...profile, password: "" },
           routine,
           calendarPreferences,
           feedback: loadFeedbackEntries(),
           updatedAt: new Date().toISOString(),
-        };
-        const response = await fetch("/api/planner", { method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ document, revision: plannerRevisionRef.current }) });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || "Planner changes could not be saved.");
-        plannerRevisionRef.current = Number(payload.revision || plannerRevisionRef.current);
-        setPlannerRevision(plannerRevisionRef.current);
-        setPlannerSyncError("");
-      } catch (error) {
-        setPlannerSyncError(error.message || "Planner changes could not be saved. Retry after reconnecting.");
-      }
-    }, 450);
+    } };
+    plannerSaveTimerRef.current = window.setTimeout(savePendingPlanner, 450);
     return () => window.clearTimeout(plannerSaveTimerRef.current);
   }, [profile, routine, calendarPreferences]);
+
+  function savePendingPlanner() {
+    const pending = plannerPendingRef.current;
+    if (!pending || pending.scope !== activePlannerScope) return;
+    plannerSaveQueueRef.current = plannerSaveQueueRef.current.then(async () => {
+      if (pending.scope !== activePlannerScope || !plannerHydratedRef.current) return;
+      try {
+        const response = await VireliApi.fetch("/api/planner", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ document: pending.document, revision: plannerRevisionRef.current }) });
+        const payload = await response.json();
+        if (pending.scope !== activePlannerScope) return;
+        if (!response.ok) throw new Error(response.status === 409 ? "Your planner changed on another device. Sign in again to review that version; your local changes remain cached." : payload.error || "Planner changes could not be saved.");
+        plannerRevisionRef.current = Number(payload.revision);
+        setPlannerRevision(plannerRevisionRef.current);
+        if (plannerPendingRef.current === pending) plannerPendingRef.current = null;
+        setPlannerSyncError("");
+      } catch (error) {
+        if (pending.scope === activePlannerScope) setPlannerSyncError(error.message || "Planner changes could not be saved. Please retry.");
+      }
+    });
+  }
 
   useEffect(() => {
     const refreshMissed = () => {
@@ -7301,9 +7313,11 @@ function App() {
   }
 
   async function hydratePlannerFromServer() {
+    const scope = activePlannerScope;
     try {
-      const response = await fetch("/api/planner", { credentials: "same-origin" });
+      const response = await VireliApi.fetch("/api/planner");
       const payload = await response.json();
+      if (scope !== activePlannerScope) return false;
       if (!response.ok) throw new Error(payload.error || "Planner data could not be loaded.");
       plannerRevisionRef.current = Number(payload.revision || 0);
       setPlannerRevision(plannerRevisionRef.current);
@@ -7311,9 +7325,11 @@ function App() {
       plannerHydratedRef.current = true;
       if (!payload.document) setRoutine((current) => ({ ...current }));
       setPlannerSyncError("");
+      return true;
     } catch (error) {
-      plannerHydratedRef.current = true;
+      plannerHydratedRef.current = false;
       setPlannerSyncError(error.message || "Planner data could not be loaded.");
+      throw error;
     }
   }
 
@@ -7324,7 +7340,7 @@ function App() {
       return;
     }
     let cancelled = false;
-    fetch("/api/auth/me", { credentials: "same-origin" })
+    VireliApi.fetch("/api/auth/me")
       .then(async (response) => {
         if (!response.ok) throw new Error("VIRELI could not check your account session.");
         return response.json();
@@ -7503,7 +7519,7 @@ function App() {
     if (accountAuthMode === "create" && /^https?:$/.test(window.location.protocol)) {
       setAccountStatus("checking");
       try {
-        const response = await fetch("/api/auth/vireli/check-username", {
+        const response = await VireliApi.fetch("/api/auth/vireli/check-username", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "same-origin",
@@ -7580,7 +7596,7 @@ function App() {
     setPasswordDraft((currentDraft) => ({ ...currentDraft, status: "saving", error: "", message: "" }));
 
     try {
-      const response = await fetch("/api/auth/vireli/change-password", {
+      const response = await VireliApi.fetch("/api/auth/vireli/change-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
@@ -7627,10 +7643,12 @@ function App() {
     });
   }
 
-  function completeAuthenticatedProfile(user, fallbackAuthMode = "vireli-account", isNewAccount = false) {
+  async function completeAuthenticatedProfile(user, fallbackAuthMode = "vireli-account", isNewAccount = false) {
     const now = new Date().toISOString();
     const authMode = user.authMode || fallbackAuthMode;
-    activatePlannerScope(`account-${user.id}`, user.username || "", !isNewAccount);
+    plannerHydratedRef.current = false;
+    plannerPendingRef.current = null;
+    activatePlannerScope(`account-${user.id}`, user.username || "", !isNewAccount && !VireliApi.hosted);
     const savedProfile = loadProfile();
     restorePlannerState();
     const nextProfile = {
@@ -7662,13 +7680,13 @@ function App() {
     const nextDraft = { ...nextProfile };
     setProfile(nextProfile);
     setProfileDraft(nextDraft);
-    setProfileStepComplete(true);
     setMoodCheckInComplete(false);
     setLaunchSetupStep(1);
     setLaunchSetupComplete(Boolean(savedProfile.setupComplete));
     setActiveTab("home");
     plannerHydratedRef.current = false;
-    hydratePlannerFromServer();
+    await hydratePlannerFromServer();
+    setProfileStepComplete(true);
   }
 
   async function handleVireliAccountSubmit(event) {
@@ -7700,7 +7718,7 @@ function App() {
     setAccountError("");
 
     try {
-      const response = await fetch(accountAuthMode === "signin" ? "/api/auth/vireli/login" : "/api/auth/vireli/register", {
+      const response = await VireliApi.fetch(accountAuthMode === "signin" ? "/api/auth/vireli/login" : "/api/auth/vireli/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
@@ -7719,7 +7737,8 @@ function App() {
         throw new Error(payload.error || (accountAuthMode === "signin" ? "Could not sign in." : "Account could not be created."));
       }
 
-      completeAuthenticatedProfile(payload.user, "vireli-account", accountAuthMode === "create");
+      VireliApi.acceptSession(payload);
+      await completeAuthenticatedProfile(payload.user, "vireli-account", accountAuthMode === "create");
       setAccountStep("choice");
       setAccountUsername("");
       setAccountPassword("");
@@ -7749,12 +7768,15 @@ function App() {
 
   function handleDisconnectProfile() {
     if (/^https?:$/.test(window.location.protocol)) {
-      fetch("/api/auth/logout", {
+      VireliApi.fetch("/api/auth/logout", {
         method: "POST",
         credentials: "same-origin",
       }).catch(() => {});
     }
     activePlannerScope = "";
+    VireliApi.clearSession();
+    window.clearTimeout(plannerSaveTimerRef.current);
+    plannerPendingRef.current = null;
     plannerHydratedRef.current = false;
     plannerRevisionRef.current = 0;
     setPlannerRevision(0);
@@ -9664,7 +9686,7 @@ function classifyAskPlannerType(prompt) {
           `
         : null}
       </${AnimatePresence}>
-      ${plannerSyncError && dashboardReady ? html`<div className="planner-sync-error" role="alert"><span>${plannerSyncError}</span><button type="button" onClick=${hydratePlannerFromServer}>Retry</button></div>` : null}
+      ${plannerSyncError && dashboardReady ? html`<div className="planner-sync-error" role="alert"><span>${plannerSyncError}</span><button type="button" onClick=${savePendingPlanner}>Retry save</button></div>` : null}
       ${dayPlanMessage && dashboardReady ? html`<div className="planner-action-notice" role="status"><span>${dayPlanMessage}</span><button type="button" aria-label="Dismiss message" onClick=${() => setDayPlanMessage("")}>×</button></div>` : null}
     </div>
   `;

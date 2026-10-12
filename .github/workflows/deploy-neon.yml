@@ -1,0 +1,49 @@
+name: Deploy VIRELI Neon API
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["functions/**", "tests/**", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".github/workflows/deploy-neon.yml"]
+permissions:
+  contents: write
+concurrency:
+  group: vireli-neon-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: node --check script.js && python3 -m py_compile server.py
+      - name: Deploy backend to Neon
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+        run: |
+          test -n "$NEON_API_KEY" && test -n "$NEON_PROJECT_ID"
+          pnpm exec neon functions deploy vireliapi --src functions/index.mjs --project-id "$NEON_PROJECT_ID" --branch br-divine-shape-b51qinmw
+          pnpm exec neon functions get vireliapi --project-id "$NEON_PROJECT_ID" --branch br-divine-shape-b51qinmw --output json > /tmp/neon-deployment.json
+      - name: Verify API and publish public endpoint
+        run: node tools/configure-api.mjs /tmp/neon-deployment.json
+      - name: Update GitHub Pages configuration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add api-config.js
+          if ! git diff --cached --quiet; then
+            git commit -m "Configure GitHub Pages to use the deployed Neon API"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+      - name: Deployment summary
+        run: |
+          echo 'Neon API verified. Public endpoint recorded in api-config.js.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Website: https://arjunsuryawanshi1.github.io/VIRELI/' >> "$GITHUB_STEP_SUMMARY"

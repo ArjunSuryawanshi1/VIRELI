@@ -1,0 +1,6 @@
+allowBuilds:
+  esbuild: true
+minimumReleaseAgeExclude:
+  - '@neon/config-runtime@1.8.1'
+  - '@neon/config@1.8.7'
+  - neon@8.3.6

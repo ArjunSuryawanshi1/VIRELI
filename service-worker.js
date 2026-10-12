@@ -1,9 +1,11 @@
-const VIRELI_CACHE = "vireli-day29-availability-routine-shell-v3";
+const VIRELI_CACHE = "vireli-day29-neon-accounts-20261012";
 const VIRELI_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=day29-availability-routine-20261011c",
-  "./script.js?v=day29-availability-routine-20261011c",
+  "./styles.css?v=day29-neon-accounts-20261012",
+  "./script.js?v=day29-neon-accounts-20261012",
+  "./api-config.js?v=day29-neon-accounts-20261012",
+  "./api-client.js?v=day29-neon-accounts-20261012",
   "./manifest.webmanifest",
   "./icons/vireli-icon.svg",
 ];
@@ -27,7 +29,7 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const requestUrl = new URL(event.request.url);
 
-  if (requestUrl.pathname.startsWith("/api/")) {
+  if (requestUrl.origin !== self.location.origin || requestUrl.pathname.startsWith("/api/")) {
     return;
   }
 
