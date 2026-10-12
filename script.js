@@ -207,7 +207,7 @@ function getBlankSetupRoutineDraft(baseRoutine = EMPTY_ROUTINE_DRAFT) {
   };
 }
 
-const APP_VERSION = "day29-neon-accounts-20261012";
+const APP_VERSION = "day29-neon-accounts-20261012b";
 const INTRO_ANIMATION_SECONDS = 1.35;
 const INTRO_SCREEN_DURATION_MS = 3200;
 const THEME_TRANSITION_DURATION_MS = 2000;
@@ -7080,6 +7080,7 @@ function App() {
   const plannerSaveTimerRef = useRef(null);
   const plannerSaveQueueRef = useRef(Promise.resolve());
   const plannerPendingRef = useRef(null);
+  const plannerSessionRef = useRef(0);
 
   const todayLabel = useMemo(() => formatDate(), []);
   const moodInfo = MOOD_DETAILS[moodSelection] || MOOD_DETAILS.unchecked;
@@ -7210,7 +7211,7 @@ function App() {
     if (!plannerHydratedRef.current || !profile.connected || !activePlannerScope.startsWith("account-")) return;
     window.clearTimeout(plannerSaveTimerRef.current);
     const scope = activePlannerScope;
-    plannerPendingRef.current = { scope, document: {
+    plannerPendingRef.current = { scope, session: plannerSessionRef.current, document: {
           version: APP_VERSION,
           profile: { ...profile, password: "" },
           routine,
@@ -7224,20 +7225,20 @@ function App() {
 
   function savePendingPlanner() {
     const pending = plannerPendingRef.current;
-    if (!pending || pending.scope !== activePlannerScope) return;
+    if (!pending || pending.scope !== activePlannerScope || pending.session !== plannerSessionRef.current) return;
     plannerSaveQueueRef.current = plannerSaveQueueRef.current.then(async () => {
-      if (pending.scope !== activePlannerScope || !plannerHydratedRef.current) return;
+      if (pending.scope !== activePlannerScope || pending.session !== plannerSessionRef.current || !plannerHydratedRef.current) return;
       try {
         const response = await VireliApi.fetch("/api/planner", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ document: pending.document, revision: plannerRevisionRef.current }) });
         const payload = await response.json();
-        if (pending.scope !== activePlannerScope) return;
+        if (pending.scope !== activePlannerScope || pending.session !== plannerSessionRef.current) return;
         if (!response.ok) throw new Error(response.status === 409 ? "Your planner changed on another device. Sign in again to review that version; your local changes remain cached." : payload.error || "Planner changes could not be saved.");
         plannerRevisionRef.current = Number(payload.revision);
         setPlannerRevision(plannerRevisionRef.current);
         if (plannerPendingRef.current === pending) plannerPendingRef.current = null;
         setPlannerSyncError("");
       } catch (error) {
-        if (pending.scope === activePlannerScope) setPlannerSyncError(error.message || "Planner changes could not be saved. Please retry.");
+        if (pending.scope === activePlannerScope && pending.session === plannerSessionRef.current) setPlannerSyncError(error.message || "Planner changes could not be saved. Please retry.");
       }
     });
   }
@@ -7314,10 +7315,11 @@ function App() {
 
   async function hydratePlannerFromServer() {
     const scope = activePlannerScope;
+    const session = plannerSessionRef.current;
     try {
       const response = await VireliApi.fetch("/api/planner");
       const payload = await response.json();
-      if (scope !== activePlannerScope) return false;
+      if (scope !== activePlannerScope || session !== plannerSessionRef.current) return false;
       if (!response.ok) throw new Error(payload.error || "Planner data could not be loaded.");
       plannerRevisionRef.current = Number(payload.revision || 0);
       setPlannerRevision(plannerRevisionRef.current);
@@ -7646,6 +7648,7 @@ function App() {
   async function completeAuthenticatedProfile(user, fallbackAuthMode = "vireli-account", isNewAccount = false) {
     const now = new Date().toISOString();
     const authMode = user.authMode || fallbackAuthMode;
+    plannerSessionRef.current += 1;
     plannerHydratedRef.current = false;
     plannerPendingRef.current = null;
     activatePlannerScope(`account-${user.id}`, user.username || "", !isNewAccount && !VireliApi.hosted);
@@ -7774,6 +7777,7 @@ function App() {
       }).catch(() => {});
     }
     activePlannerScope = "";
+    plannerSessionRef.current += 1;
     VireliApi.clearSession();
     window.clearTimeout(plannerSaveTimerRef.current);
     plannerPendingRef.current = null;
